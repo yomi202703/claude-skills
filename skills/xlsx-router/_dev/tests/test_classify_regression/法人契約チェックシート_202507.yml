@@ -1,0 +1,64 @@
+all_docs_to_read:
+- merges.md
+- p3_structured_small.md
+docs_base_dir: ~/.claude/skills/xlsx/docs
+extra_docs: []
+file: 法人契約チェックシート_202507.xlsx
+filename: 法人契約チェックシート_202507.xlsx
+multi_sheet: false
+output_dir_suggestion: data/法人契約チェックシート_202507
+sheets:
+- cols: 32
+  content_type: rules
+  cxn_count: 0
+  data_row_count: 49
+  data_rows:
+  - 11
+  - 59
+  docs_to_read:
+  - p3_structured_small.md
+  - merges.md
+  drawing_density: 0.0
+  has_drawings: false
+  has_vml_drawings: false
+  header_confidence: 6.49
+  header_features:
+    bold_frac: 0.0
+    desc_contrast: 0.0
+    empty_frac: 0.81
+    flip_frac: 0.0
+    in_v_merge: false
+    mean_len: 3.3
+    post_spec_block: 0.0
+    run_start_bonus: 1.4
+    shape_match: 1.0
+    short_cnt: 6
+    str_frac: 1.0
+    typical_width: 4
+    uniq_frac: 1.0
+  header_preview:
+  - null
+  - 区分
+  - 帳票等
+  - 項目
+  - null
+  - null
+  - null
+  - 確認事項
+  - null
+  - null
+  header_row_index: 9
+  header_rows:
+  - 9
+  - 10
+  merged_count: 147
+  name: 法人契約チェックシート_202507
+  path: P3
+  pic_count: 0
+  rows: 60
+  shape: structured
+  shape_count: 0
+  sheet_slug: 法人契約チェックシート_202507
+  size: small
+  suggests_visual: false
+workbook_slug: 法人契約チェックシート_202507

@@ -1,0 +1,249 @@
+all_docs_to_read:
+- manifest.md
+- multi_sheet.md
+- p2_db_large.md
+docs_base_dir: ~/.claude/skills/xlsx/docs
+extra_docs:
+- multi_sheet.md
+- manifest.md
+file: 補償基準DB（2025年6月10日版）_三浦.xlsx
+filename: 補償基準DB（2025年6月10日版）_三浦.xlsx
+multi_sheet: true
+output_dir_suggestion: data/補償基準DB_2025年6月10日版_三浦
+sheets:
+- cols: 6
+  content_type: table
+  cxn_count: 0
+  data_row_count: 17274
+  data_rows:
+  - 2
+  - 17275
+  docs_to_read:
+  - p2_db_large.md
+  drawing_density: 0.0
+  has_drawings: false
+  has_vml_drawings: false
+  header_confidence: 5.0
+  header_features:
+    bold_frac: 1.0
+    desc_contrast: 0.0
+    empty_frac: 0.0
+    flip_frac: 0.0
+    in_v_merge: false
+    mean_len: 8.5
+    post_spec_block: 0.0
+    run_start_bonus: 0.0
+    shape_match: 0.0
+    short_cnt: 6
+    str_frac: 1.0
+    typical_width: 2
+    uniq_frac: 1.0
+  header_preview:
+  - 診療項目詳細_t
+  - 対象・対象外_t
+  - 参照_ご案内用_ct
+  - 参照_用途_ct
+  - 参照_医療・製品情報_ct
+  - 特記事項
+  header_row_index: 1
+  header_rows:
+  - 1
+  merged_count: 0
+  name: マスタ
+  path: P2
+  pic_count: 0
+  rows: 17275
+  shape: db
+  shape_count: 0
+  sheet_slug: マスタ
+  size: large
+  suggests_visual: false
+- cols: 6
+  content_type: rules
+  cxn_count: 0
+  data_row_count: 1257
+  data_rows:
+  - 2
+  - 1258
+  docs_to_read:
+  - p2_db_large.md
+  drawing_density: 0.0
+  has_drawings: false
+  has_vml_drawings: false
+  header_confidence: 6.5
+  header_features:
+    bold_frac: 1.0
+    desc_contrast: 0.0
+    empty_frac: 0.0
+    flip_frac: 0.0
+    in_v_merge: false
+    mean_len: 8.5
+    post_spec_block: 0.0
+    run_start_bonus: 0.0
+    shape_match: 1.0
+    short_cnt: 6
+    str_frac: 1.0
+    typical_width: 4
+    uniq_frac: 1.0
+  header_preview:
+  - 診療項目詳細_t
+  - 対象・対象外_t
+  - 参照_ご案内用_ct
+  - 参照_用途_ct
+  - 参照_医療・製品情報_ct
+  - 特記事項
+  header_row_index: 1
+  header_rows:
+  - 1
+  merged_count: 0
+  name: 対象外_無条件
+  path: P2
+  pic_count: 0
+  rows: 1857
+  shape: db
+  shape_count: 0
+  sheet_slug: 対象外_無条件
+  size: large
+  suggests_visual: false
+- cols: 6
+  content_type: rules
+  cxn_count: 0
+  data_row_count: 14765
+  data_rows:
+  - 2
+  - 14766
+  docs_to_read:
+  - p2_db_large.md
+  drawing_density: 0.0
+  has_drawings: false
+  has_vml_drawings: false
+  header_confidence: 5.0
+  header_features:
+    bold_frac: 1.0
+    desc_contrast: 0.0
+    empty_frac: 0.0
+    flip_frac: 0.0
+    in_v_merge: false
+    mean_len: 8.5
+    post_spec_block: 0.0
+    run_start_bonus: 0.0
+    shape_match: 0.0
+    short_cnt: 6
+    str_frac: 1.0
+    typical_width: 2
+    uniq_frac: 1.0
+  header_preview:
+  - 診療項目詳細_t
+  - 対象・対象外_t
+  - 参照_ご案内用_ct
+  - 参照_用途_ct
+  - 参照_医療・製品情報_ct
+  - 特記事項
+  header_row_index: 1
+  header_rows:
+  - 1
+  merged_count: 0
+  name: 対象_無条件
+  path: P2
+  pic_count: 0
+  rows: 29527
+  shape: db
+  shape_count: 0
+  sheet_slug: 対象_無条件
+  size: large
+  suggests_visual: false
+- cols: 6
+  content_type: table
+  cxn_count: 0
+  data_row_count: 784
+  data_rows:
+  - 2
+  - 785
+  docs_to_read:
+  - p2_db_large.md
+  drawing_density: 0.0
+  has_drawings: false
+  has_vml_drawings: false
+  header_confidence: 6.5
+  header_features:
+    bold_frac: 1.0
+    desc_contrast: 0.0
+    empty_frac: 0.0
+    flip_frac: 0.0
+    in_v_merge: false
+    mean_len: 8.5
+    post_spec_block: 0.0
+    run_start_bonus: 0.0
+    shape_match: 1.0
+    short_cnt: 6
+    str_frac: 1.0
+    typical_width: 4
+    uniq_frac: 1.0
+  header_preview:
+  - 診療項目詳細_t
+  - 対象・対象外_t
+  - 参照_ご案内用_ct
+  - 参照_用途_ct
+  - 参照_医療・製品情報_ct
+  - 特記事項
+  header_row_index: 1
+  header_rows:
+  - 1
+  merged_count: 0
+  name: 対象対象外
+  path: P2
+  pic_count: 0
+  rows: 1518
+  shape: db
+  shape_count: 0
+  sheet_slug: 対象対象外
+  size: large
+  suggests_visual: false
+- cols: 6
+  content_type: table
+  cxn_count: 0
+  data_row_count: 515
+  data_rows:
+  - 2
+  - 516
+  docs_to_read:
+  - p2_db_large.md
+  drawing_density: 0.0
+  has_drawings: false
+  has_vml_drawings: false
+  header_confidence: 6.6
+  header_features:
+    bold_frac: 1.0
+    desc_contrast: 0.0
+    empty_frac: 0.0
+    flip_frac: 0.0
+    in_v_merge: false
+    mean_len: 8.5
+    post_spec_block: 0.0
+    run_start_bonus: 0.1
+    shape_match: 1.0
+    short_cnt: 6
+    str_frac: 1.0
+    typical_width: 4
+    uniq_frac: 1.0
+  header_preview:
+  - 診療項目詳細_t
+  - 対象・対象外_t
+  - 参照_ご案内用_ct
+  - 参照_用途_ct
+  - 参照_医療・製品情報_ct
+  - 特記事項
+  header_row_index: 1
+  header_rows:
+  - 1
+  merged_count: 0
+  name: 対象
+  path: P2
+  pic_count: 0
+  rows: 516
+  shape: db
+  shape_count: 0
+  sheet_slug: 対象
+  size: large
+  suggests_visual: false
+workbook_slug: 補償基準DB_2025年6月10日版_三浦

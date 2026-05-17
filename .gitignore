@@ -1,0 +1,18 @@
+# Allow-list approach: ignore everything, then allow specific config.
+# Anything not explicitly un-ignored stays out of the repo (sessions, history,
+# credentials, caches, telemetry, etc.).
+
+/*
+!/.gitignore
+!/README.md
+!/skills/
+!/agents/
+!/commands/
+!/output-styles/
+!/settings.json
+
+# Inside the allowed dirs, drop noisy files.
+**/.DS_Store
+**/__pycache__/
+**/*.pyc
+**/node_modules/

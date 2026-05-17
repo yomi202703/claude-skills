@@ -1,0 +1,56 @@
+all_docs_to_read:
+- p1_db_small.md
+docs_base_dir: ~/.claude/skills/xlsx/docs
+extra_docs: []
+file: db_small.xlsx
+filename: db_small.xlsx
+multi_sheet: false
+output_dir_suggestion: data/db_small
+sheets:
+- cols: 5
+  content_type: table
+  cxn_count: 0
+  data_row_count: 20
+  data_rows:
+  - 2
+  - 21
+  docs_to_read:
+  - p1_db_small.md
+  drawing_density: 0.0
+  has_drawings: false
+  has_vml_drawings: false
+  header_confidence: 7.5
+  header_features:
+    bold_frac: 0.0
+    desc_contrast: 0.0
+    empty_frac: 0.0
+    flip_frac: 0.6
+    in_v_merge: false
+    mean_len: 3.6
+    post_spec_block: 0.0
+    run_start_bonus: 2.0
+    shape_match: 0.0
+    short_cnt: 5
+    str_frac: 1.0
+    typical_width: 0
+    uniq_frac: 1.0
+  header_preview:
+  - id
+  - name
+  - qty
+  - price
+  - date
+  header_row_index: 1
+  header_rows:
+  - 1
+  merged_count: 0
+  name: orders
+  path: P1
+  pic_count: 0
+  rows: 21
+  shape: db
+  shape_count: 0
+  sheet_slug: orders
+  size: small
+  suggests_visual: false
+workbook_slug: db_small

@@ -1,0 +1,53 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/ivymee/.claude/skills/xlsx-router/_dev/hook_check.sh"
+          },
+          {
+            "type": "command",
+            "command": "/Users/ivymee/Projects/ai-wiki-skill/_dev/hook_check.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "pyright-lsp@claude-plugins-official": true,
+    "anthropic-skills": false
+  },
+  "effortLevel": "xhigh",
+  "skipAutoPermissionPrompt": true,
+  "autoMemoryEnabled": false,
+  "skillOverrides": {
+    "init": "off",
+    "review": "off",
+    "security-review": "off",
+    "update-config": "off",
+    "keybindings-help": "off",
+    "simplify": "off",
+    "fewer-permission-prompts": "off",
+    "loop": "off",
+    "schedule": "off",
+    "claude-api": "name-only",
+    "code-consistency": "name-only",
+    "deep": "name-only",
+    "convo-md": "name-only",
+    "pdf-to-md": "name-only",
+    "deadcode": "name-only",
+    "ai-pipeline-audit": "name-only",
+    "ai-wiki": "name-only",
+    "xlsx-router": "name-only",
+    "xlsx": "off",
+    "pptx": "off",
+    "docx": "off",
+    "pdf": "off",
+    "skill-creator": "off",
+    "setup-cowork": "off",
+    "consolidate-memory": "off"
+  }
+}

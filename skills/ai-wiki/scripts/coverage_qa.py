@@ -1,0 +1,496 @@
+#!/usr/bin/env python3
+"""Coverage check via QuestEval-style QA generation + verification (v4, §13.7).
+
+Flow:
+  1. Generate QA set from source text (Claude Opus)
+  2. Store QA set under `~/ai-wiki/.narrative-qa/<slug>.json` (hidden metadata)
+  3. Judge coverage: pass narrative body + QA to Claude, get per-QA status
+     (covered / partial / missing)
+  4. Write gap report to `~/ai-wiki/.narrative-gaps/<slug>.md`
+
+Gap report is informational (not a commit gate). User scans it during study
+to find narrative holes that match their intuition of "this feels missing".
+"""
+from __future__ import annotations
+
+import json
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import llm
+from vault import Vault
+
+# ---------- hidden metadata directories ----------
+
+QA_DIR_NAME = ".narrative-qa"
+GAPS_DIR_NAME = ".narrative-gaps"
+
+
+@dataclass
+class QAItem:
+    q: str
+    a: str
+
+    def to_dict(self) -> dict:
+        return {"q": self.q, "a": self.a}
+
+
+@dataclass
+class CoverageStatus:
+    q: str
+    status: str  # "covered" | "partial" | "missing"
+    note: str = ""
+
+
+@dataclass
+class CoverageReport:
+    slug: str
+    total: int
+    covered: int
+    partial: int
+    missing: int
+    coverage_pct: float
+    items: list[CoverageStatus] = field(default_factory=list)
+    cost_usd: float = 0.0
+    qa_set_path: str = ""
+    gap_report_path: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "slug": self.slug,
+            "total": self.total,
+            "covered": self.covered,
+            "partial": self.partial,
+            "missing": self.missing,
+            "coverage_pct": self.coverage_pct,
+            "cost_usd": round(self.cost_usd, 4),
+            "qa_set_path": self.qa_set_path,
+            "gap_report_path": self.gap_report_path,
+            "items": [asdict(x) for x in self.items],
+        }
+
+
+# ---------- paths ----------
+
+
+def _qa_dir(vault: Vault) -> Path:
+    d = vault.root / QA_DIR_NAME
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _gaps_dir(vault: Vault) -> Path:
+    d = vault.root / GAPS_DIR_NAME
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def qa_set_path(vault: Vault, slug: str) -> Path:
+    return _qa_dir(vault) / f"{slug}.json"
+
+
+def gap_report_path(vault: Vault, slug: str) -> Path:
+    return _gaps_dir(vault) / f"{slug}.md"
+
+
+# ---------- QA generation ----------
+
+
+def generate_qa_set(vault: Vault, slug: str, title: str, source_text: str) -> tuple[list[QAItem], float]:
+    """Call Claude to generate QA pairs from source. Returns (qa_list, cost)."""
+    result = llm.call_with_template(
+        "coverage_qa_gen",
+        {"slug": slug, "title": title, "source_text": source_text},
+    )
+    llm.log_call(vault.append_log, "coverage_qa_gen", slug, result)
+    if result.is_error:
+        return [], result.cost_usd
+    parsed = result.parsed
+    if not isinstance(parsed, list):
+        return [], result.cost_usd
+    out: list[QAItem] = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        q = item.get("q")
+        a = item.get("a")
+        if isinstance(q, str) and q.strip() and isinstance(a, str) and a.strip():
+            out.append(QAItem(q=q.strip(), a=a.strip()))
+    return out, result.cost_usd
+
+
+def save_qa_set(vault: Vault, slug: str, items: list[QAItem]) -> Path:
+    path = qa_set_path(vault, slug)
+    payload = {
+        "slug": slug,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "count": len(items),
+        "qa_pairs": [x.to_dict() for x in items],
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def load_qa_set(vault: Vault, slug: str) -> list[QAItem]:
+    path = qa_set_path(vault, slug)
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    return [QAItem(q=p["q"], a=p["a"]) for p in data.get("qa_pairs", []) if "q" in p and "a" in p]
+
+
+# ---------- Coverage check ----------
+
+
+def check_coverage(
+    vault: Vault,
+    slug: str,
+    narrative_body: str,
+    qa_items: list[QAItem],
+) -> tuple[list[CoverageStatus], float]:
+    """Ask Claude to judge each QA against the narrative. Returns
+    (statuses_in_input_order, cost)."""
+    if not qa_items:
+        return [], 0.0
+    qa_json = json.dumps([x.to_dict() for x in qa_items], ensure_ascii=False, indent=2)
+    result = llm.call_with_template(
+        "coverage_qa_check",
+        {"slug": slug, "narrative_body": narrative_body, "qa_items_json": qa_json},
+    )
+    llm.log_call(vault.append_log, "coverage_qa_check", slug, result)
+    if result.is_error or not isinstance(result.parsed, list):
+        # Fallback: treat everything as missing
+        return [CoverageStatus(q=x.q, status="missing", note="coverage check failed") for x in qa_items], result.cost_usd
+
+    parsed = result.parsed
+    statuses: list[CoverageStatus] = []
+    for i, qa in enumerate(qa_items):
+        if i >= len(parsed):
+            statuses.append(CoverageStatus(q=qa.q, status="missing", note="judge output truncated"))
+            continue
+        item = parsed[i] if isinstance(parsed[i], dict) else {}
+        status = str(item.get("status", "missing"))
+        if status not in ("covered", "partial", "missing"):
+            status = "missing"
+        note = str(item.get("note", ""))
+        statuses.append(CoverageStatus(q=qa.q, status=status, note=note))
+    return statuses, result.cost_usd
+
+
+# ---------- Gap report ----------
+
+
+def write_gap_report(
+    vault: Vault,
+    slug: str,
+    report: CoverageReport,
+) -> Path:
+    path = gap_report_path(vault, slug)
+    lines: list[str] = [
+        f"<!-- auto-generated by /wiki-coverage-narrative. Hidden from Obsidian. -->",
+        "",
+        f"# {slug} coverage gaps",
+        "",
+        f"_Last checked: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC_",
+        "",
+        f"{report.total} QA / "
+        f"{report.covered} covered ({report.coverage_pct:.1f}%) / "
+        f"{report.partial} partial / {report.missing} missing",
+        "",
+    ]
+    missing = [s for s in report.items if s.status == "missing"]
+    partial = [s for s in report.items if s.status == "partial"]
+
+    if missing:
+        lines.append("## 答えられなかった問い (missing)")
+        lines.append("")
+        for s in missing:
+            lines.append(f"- {s.q}")
+            if s.note:
+                lines.append(f"  - 判定根拠: {s.note}")
+        lines.append("")
+
+    if partial:
+        lines.append("## 部分的にしか扱われていない問い (partial)")
+        lines.append("")
+        for s in partial:
+            lines.append(f"- {s.q}")
+            if s.note:
+                lines.append(f"  - 判定根拠: {s.note}")
+        lines.append("")
+
+    lines.append("## 修正指示のヒント")
+    lines.append("")
+    lines.append(
+        "上記の問いは narrative に未収録 or 不十分な可能性があります。"
+        "study 中に違和感と一致するものがあれば Claude Code に修正指示してください。"
+        "意図的な省略ならこの report は無視して OK。"
+    )
+    lines.append("")
+
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
+
+
+# ---------- top-level entry ----------
+
+
+def run_coverage(
+    vault: Vault,
+    slug: str,
+    source_path: str | Path | None,
+    *,
+    regenerate_qa: bool = False,
+) -> dict:
+    """Full coverage workflow for a narrative.
+
+    Parameters
+    ----------
+    slug
+        Target narrative slug. Must exist under `~/ai-wiki/narratives/<slug>.md`.
+    source_path
+        Path to the original markdown source. Required on first run (to
+        generate the QA set). Subsequent runs can omit this arg to re-use
+        the cached QA set, unless `regenerate_qa=True`.
+    regenerate_qa
+        Force regeneration of the QA set even if a cached version exists.
+    """
+    narrative_page = vault.read("narrative", slug)
+    if narrative_page is None:
+        return {"slug": slug, "error": f"narrative {slug!r} not found"}
+
+    # --- Step 1: QA set (generate or load cached) ---
+    qa_items = [] if regenerate_qa else load_qa_set(vault, slug)
+    qa_cost = 0.0
+    if not qa_items:
+        if not source_path:
+            return {
+                "slug": slug,
+                "error": (
+                    "no cached QA set; --source is required for first-time coverage run"
+                ),
+            }
+        src_path = Path(source_path).expanduser()
+        if not src_path.exists():
+            return {"slug": slug, "error": f"source not found: {src_path}"}
+        source_text = src_path.read_text(encoding="utf-8")
+        title = str(narrative_page.meta.get("title") or slug)
+        qa_items, qa_cost = generate_qa_set(vault, slug, title, source_text)
+        if not qa_items:
+            return {"slug": slug, "error": "QA generation failed or produced empty set"}
+        save_qa_set(vault, slug, qa_items)
+
+    # --- Step 2: coverage check ---
+    statuses, check_cost = check_coverage(vault, slug, narrative_page.body, qa_items)
+
+    # --- Step 3: aggregate + write gap report ---
+    covered = sum(1 for s in statuses if s.status == "covered")
+    partial = sum(1 for s in statuses if s.status == "partial")
+    missing = sum(1 for s in statuses if s.status == "missing")
+    total = len(statuses)
+    coverage_pct = (covered / total * 100.0) if total else 0.0
+
+    report = CoverageReport(
+        slug=slug,
+        total=total,
+        covered=covered,
+        partial=partial,
+        missing=missing,
+        coverage_pct=round(coverage_pct, 1),
+        items=statuses,
+        cost_usd=qa_cost + check_cost,
+        qa_set_path=str(qa_set_path(vault, slug).relative_to(vault.root)),
+    )
+    gap_path = write_gap_report(vault, slug, report)
+    report.gap_report_path = str(gap_path.relative_to(vault.root))
+
+    vault.append_log(
+        "coverage_check",
+        {
+            "slug": slug,
+            "covered": covered,
+            "partial": partial,
+            "missing": missing,
+            "total": total,
+            "cost_usd": f"{report.cost_usd:.4f}",
+        },
+    )
+
+    return report.to_dict()
+
+
+# ---------- iterative gap remediation (v5-5) ----------
+
+
+@dataclass
+class IterateResult:
+    final_body: str
+    iterations_run: int
+    final_coverage: CoverageReport
+    cost_usd: float
+    converged: bool
+
+    def to_dict(self) -> dict:
+        return {
+            "iterations_run": self.iterations_run,
+            "converged": self.converged,
+            "final_coverage": self.final_coverage.to_dict(),
+            "cost_usd": round(self.cost_usd, 4),
+        }
+
+
+def _apply_gap_fix(
+    vault: Vault,
+    slug: str,
+    title: str,
+    narrative_body: str,
+    source_text: str,
+    statuses: list[CoverageStatus],
+) -> tuple[str, float]:
+    """Ask Claude to revise narrative_body to address missing/partial gaps.
+
+    Returns (revised_body, cost). If no fix is applied or error, returns
+    (original_body, cost).
+    """
+    gaps = [s for s in statuses if s.status in ("missing", "partial")]
+    if not gaps:
+        return narrative_body, 0.0
+    gaps_json = json.dumps(
+        [{"q": s.q, "status": s.status, "note": s.note} for s in gaps],
+        ensure_ascii=False,
+        indent=2,
+    )
+    result = llm.call_with_template(
+        "coverage_qa_fix",
+        {
+            "slug": slug,
+            "title": title,
+            "narrative_body": narrative_body,
+            "gaps_json": gaps_json,
+            "source_text": source_text,
+        },
+    )
+    llm.log_call(vault.append_log, "coverage_qa_fix", slug, result)
+    if result.is_error:
+        return narrative_body, result.cost_usd
+    text = result.text.strip()
+    if not text or text == "NO_FIXES_APPLIED":
+        return narrative_body, result.cost_usd
+    return text, result.cost_usd
+
+
+def iterate_and_fix(
+    vault: Vault,
+    slug: str,
+    title: str,
+    narrative_body: str,
+    source_text: str,
+    *,
+    coverage_threshold: float = 0.95,
+    max_iterations: int = 3,
+) -> IterateResult:
+    """Iterate QuestEval remediation until coverage ≥ threshold or max_iterations.
+
+    Flow per iteration:
+      1. QA set (generate or load cached)
+      2. check_coverage
+      3. if coverage_pct/100 >= threshold: return (converged)
+      4. _apply_gap_fix → revised body
+      5. next iteration re-checks with same QA set
+
+    The QA set is generated once (first iteration) and reused across rounds.
+    Final narrative body is returned; caller handles commit + CoVe afterward.
+    """
+    body = narrative_body
+    total_cost = 0.0
+    iterations_run = 0
+    converged = False
+
+    # Generate or load QA set (once)
+    qa_items = load_qa_set(vault, slug)
+    if not qa_items:
+        qa_items, qa_cost = generate_qa_set(vault, slug, title, source_text)
+        total_cost += qa_cost
+        if qa_items:
+            save_qa_set(vault, slug, qa_items)
+
+    if not qa_items:
+        # QA generation failed; return original body with empty report
+        empty_report = CoverageReport(
+            slug=slug, total=0, covered=0, partial=0, missing=0,
+            coverage_pct=0.0, cost_usd=total_cost,
+        )
+        return IterateResult(
+            final_body=body,
+            iterations_run=0,
+            final_coverage=empty_report,
+            cost_usd=total_cost,
+            converged=False,
+        )
+
+    statuses: list[CoverageStatus] = []
+    coverage_pct = 0.0
+
+    for i in range(max_iterations):
+        iterations_run = i + 1
+        statuses, check_cost = check_coverage(vault, slug, body, qa_items)
+        total_cost += check_cost
+        covered = sum(1 for s in statuses if s.status == "covered")
+        total = len(statuses)
+        coverage_pct = (covered / total) if total else 0.0
+
+        if coverage_pct >= coverage_threshold:
+            converged = True
+            break
+
+        # Attempt gap fix
+        body, fix_cost = _apply_gap_fix(
+            vault, slug, title, body, source_text, statuses,
+        )
+        total_cost += fix_cost
+
+    # Final aggregation
+    covered = sum(1 for s in statuses if s.status == "covered")
+    partial = sum(1 for s in statuses if s.status == "partial")
+    missing = sum(1 for s in statuses if s.status == "missing")
+    total = len(statuses)
+
+    final_report = CoverageReport(
+        slug=slug,
+        total=total,
+        covered=covered,
+        partial=partial,
+        missing=missing,
+        coverage_pct=round(coverage_pct * 100.0, 1),
+        items=statuses,
+        cost_usd=total_cost,
+        qa_set_path=str(qa_set_path(vault, slug).relative_to(vault.root)),
+    )
+
+    # Persist gap report even for converged case (shows what's left)
+    gap_path = write_gap_report(vault, slug, final_report)
+    final_report.gap_report_path = str(gap_path.relative_to(vault.root))
+
+    vault.append_log(
+        "coverage_iterate",
+        {
+            "slug": slug,
+            "iterations": iterations_run,
+            "converged": "yes" if converged else "no",
+            "coverage_pct": f"{final_report.coverage_pct:.1f}",
+            "cost_usd": f"{total_cost:.4f}",
+        },
+    )
+
+    return IterateResult(
+        final_body=body,
+        iterations_run=iterations_run,
+        final_coverage=final_report,
+        cost_usd=total_cost,
+        converged=converged,
+    )
