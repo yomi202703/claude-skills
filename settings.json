@@ -1,28 +1,4 @@
 {
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/Users/ivymee/.claude/skills/xlsx-router/_dev/hook_check.sh"
-          },
-          {
-            "type": "command",
-            "command": "/Users/ivymee/Projects/ai-wiki-skill/_dev/hook_check.sh"
-          }
-        ]
-      }
-    ]
-  },
-  "enabledPlugins": {
-    "pyright-lsp@claude-plugins-official": true,
-    "anthropic-skills": false
-  },
-  "effortLevel": "xhigh",
-  "skipAutoPermissionPrompt": true,
-  "autoMemoryEnabled": false,
   "skillOverrides": {
     "init": "off",
     "review": "off",
@@ -36,12 +12,14 @@
     "claude-api": "name-only",
     "code-consistency": "name-only",
     "deep": "name-only",
+    "deep-strict": "name-only",
     "convo-md": "name-only",
     "pdf-to-md": "name-only",
     "deadcode": "name-only",
     "ai-pipeline-audit": "name-only",
     "ai-wiki": "name-only",
     "xlsx-router": "name-only",
+    "gemma-worker": "name-only",
     "xlsx": "off",
     "pptx": "off",
     "docx": "off",
@@ -49,5 +27,33 @@
     "skill-creator": "off",
     "setup-cowork": "off",
     "consolidate-memory": "off"
-  }
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/ivymee/.claude/skills/xlsx-router/_dev/hook_check.sh"
+          },
+          {
+            "type": "command",
+            "command": "/Users/ivymee/Projects/ai-wiki-skill/_dev/hook_check.sh"
+          },
+          {
+            "type": "command",
+            "command": "/Users/ivymee/.claude/skills/gemma-worker/_dev/hook_check.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "pyright-lsp@claude-plugins-official": true,
+    "anthropic-skills": false
+  },
+  "effortLevel": "medium",
+  "autoMemoryEnabled": false,
+  "skipAutoPermissionPrompt": true
 }

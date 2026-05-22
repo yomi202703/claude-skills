@@ -1,6 +1,6 @@
 ---
 name: ai-pipeline-audit
-description: AI パイプライン（プロンプト駆動でサブエージェントが判定・抽出・分類等を行う系）の事後監査。Prompt-induced bias・Eval pipeline integrity・Prompt overfitting・Termination/verification spec・Reasoning-action mismatch の 5 カテゴリで LLM 特有 failure modes を 5 つの isolated subagent in parallel で検知する（軸間 anchoring 防止）。設計初期/実装区切り/サブエージェント呼出前/レビュー時に呼ぶ。
+description: AI パイプライン（プロンプト駆動でサブエージェントが判定・抽出・分類等を行う系）の事後監査。Prompt-induced bias・Eval pipeline integrity・Prompt overfitting・Termination/verification spec・Reasoning-action mismatch・Intent-to-Execution integrity の 6 カテゴリで LLM 特有 failure modes を isolated subagent in parallel で検知する。軸 1–4 は prompt/file を見る設計時監査、軸 5–6 はトレース必須の実行時監査。設計初期/実装区切り/サブエージェント呼出前/レビュー時に呼ぶ。
 ---
 
 # AI Pipeline Audit (orchestrator)
@@ -29,12 +29,23 @@ The orchestrator does not re-judge subagent findings, does not narrate, does not
 
 ## Axes
 
-| # | Axis | Layer | Prompt file |
-|---|---|---|---|
-| 1 | Prompt-induced bias | prompt | `prompts/axis-01-prompt-bias.md` |
-| 2 | Eval pipeline integrity | prompt | `prompts/axis-02-eval-integrity.md` |
-| 3 | Prompt overfitting | prompt | `prompts/axis-03-prompt-overfitting.md` |
-| 4 | Termination & verification spec | prompt | `prompts/axis-04-termination.md` |
-| 5 | Reasoning-action mismatch | trace only | `prompts/axis-05-reasoning-action.md` |
+| # | Axis | Layer | Input | Prompt file |
+|---|---|---|---|---|
+| 1 | Prompt-induced bias | design-time (Layer 0) | `$TARGET` file | `prompts/axis-01-prompt-bias.md` |
+| 2 | Eval pipeline integrity | design-time (Layer 0) | `$TARGET` file | `prompts/axis-02-eval-integrity.md` |
+| 3 | Prompt overfitting | design-time (Layer 0) | `$TARGET` file | `prompts/axis-03-prompt-overfitting.md` |
+| 4 | Termination & verification spec | design-time (Layer 0) | `$TARGET` file | `prompts/axis-04-termination.md` |
+| 5 | Reasoning-action mismatch | runtime (Layer 2) | `$TRACE` (OTel JSON) | `prompts/axis-05-reasoning-action.md` |
+| 6 | Intent-to-Execution integrity | runtime (Layer 2) | `$INTENT` + `$TRACE` | `prompts/axis-06-intent-execution.md` |
 
 Axes are self-contained in their prompt files. The orchestrator does not need to understand them — it only routes targets and collects JSON.
+
+Layer 0 axes can be invoked on every Edit/Write to skill/playbook files (typically via a Claude Code PostToolUse hook). Layer 2 axes are invoked after a worker run completes, against the OpenTelemetry span trace produced by that run.
+
+## Helper scripts
+
+`scripts/meta_judge.py` — reconcile cheap / expensive / tie-breaker verdicts for a batch of findings. Use it when you have already obtained two or three independent judgments of the same finding set and need to decide which to keep. The script's `--input` JSON contains aligned arrays; the output filters findings whose verdicts converge to `valid` and logs any disagreement records.
+
+`scripts/verdict_mapper.py` — given a metrics dict, return a PROMOTE / HOLD / ROLLBACK verdict using the published thresholds (Task Success ≥ 0.80, Context Preservation ≥ 0.90, P95 Latency < 15s, Safety ≥ 0.95, Evidence Coverage ≥ 0.80, axis 5/6 violations 0). HOLD spans the band down to roughly 70 % of target; below that is ROLLBACK.
+
+Both scripts are pure functions plus a thin CLI; they take no side effects and modify no files. The audit principle "Detect, report, user decides" applies.

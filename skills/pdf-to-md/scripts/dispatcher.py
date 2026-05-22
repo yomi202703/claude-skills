@@ -13,11 +13,16 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import signal
 import subprocess
 import time
 import urllib.request
+from glob import glob
 from pathlib import Path
+
+IMG_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".bmp", ".heic"}
+_NAT = re.compile(r"(\d+)")
 
 VENV_BIN = Path.home() / "mineru-test" / ".venv" / "bin"
 MINERU_API = VENV_BIN / "mineru-api"
@@ -116,10 +121,71 @@ def cmd_status(args) -> dict:
     return {"alive": _server_alive(state), "state": state}
 
 
+def _natkey(p: Path):
+    return [int(s) if s.isdigit() else s.lower() for s in _NAT.split(p.name)]
+
+
+def _collect_images(inputs: list[str]) -> list[Path]:
+    files: list[Path] = []
+    for raw in inputs:
+        p = Path(os.path.expanduser(raw))
+        if p.is_dir():
+            files += [c for c in p.iterdir() if c.suffix.lower() in IMG_EXTS]
+        elif any(ch in raw for ch in "*?["):
+            files += [Path(m) for m in glob(os.path.expanduser(raw))
+                      if Path(m).suffix.lower() in IMG_EXTS]
+        elif p.suffix.lower() in IMG_EXTS:
+            files.append(p)
+    return sorted({f.resolve() for f in files}, key=_natkey)
+
+
+def _images_to_pdf(images: list[Path], out_pdf: Path) -> None:
+    from PIL import Image  # lazy
+
+    def to_rgb(img: "Image.Image") -> "Image.Image":
+        if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+            bg = Image.new("RGB", img.size, (255, 255, 255))
+            bg.paste(img.convert("RGBA"), mask=img.convert("RGBA").split()[-1])
+            return bg
+        return img.convert("RGB") if img.mode != "RGB" else img
+
+    out_pdf.parent.mkdir(parents=True, exist_ok=True)
+    first, *rest = [to_rgb(Image.open(p)) for p in images]
+    first.save(out_pdf, "PDF", save_all=True, append_images=rest, resolution=150.0)
+
+
+def _resolve_input(inputs: list[str], name: str | None) -> tuple[Path, list[Path] | None]:
+    """Return (pdf_path, bundled_images_or_None).
+
+    - One existing .pdf → use as-is.
+    - Anything else (directory / glob / image paths) → bundle into a PDF first.
+    """
+    if len(inputs) == 1:
+        only = Path(os.path.expanduser(inputs[0]))
+        if only.suffix.lower() == ".pdf":
+            if not only.exists():
+                raise FileNotFoundError(only)
+            return only.resolve(), None
+
+    images = _collect_images(inputs)
+    if not images:
+        raise FileNotFoundError(f"no PDF or images in: {inputs}")
+
+    stem = name or (
+        Path(os.path.expanduser(inputs[0])).resolve().name
+        if len(inputs) == 1 and Path(os.path.expanduser(inputs[0])).is_dir()
+        else images[0].parent.name
+    )
+    out_pdf = Path.home() / "preprocessed" / "_pic_bundles" / f"{stem}.pdf"
+    _images_to_pdf(images, out_pdf)
+    return out_pdf, images
+
+
 def cmd_convert(args) -> dict:
-    pdf = Path(args.pdf).expanduser().resolve()
-    if not pdf.exists():
-        return {"error": f"not found: {pdf}"}
+    try:
+        pdf, bundled = _resolve_input(args.input, args.name)
+    except FileNotFoundError as e:
+        return {"error": str(e)}
     out_dir = Path(args.out).expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -145,7 +211,7 @@ def cmd_convert(args) -> dict:
     md_candidates = sorted(out_dir.glob(f"{pdf.stem}/**/*.md"))
     md_path = str(md_candidates[0]) if md_candidates else None
 
-    return {
+    result = {
         "pdf": str(pdf),
         "out_md": md_path,
         "mode": "warm" if server_url else "cold",
@@ -154,6 +220,9 @@ def cmd_convert(args) -> dict:
         "returncode": proc.returncode,
         "stderr_tail": (proc.stderr or "")[-500:],
     }
+    if bundled is not None:
+        result["bundled_from_images"] = len(bundled)
+    return result
 
 
 def main() -> None:
@@ -172,8 +241,10 @@ def main() -> None:
     sp = sub.add_parser("status", help="report server liveness")
     sp.set_defaults(func=cmd_status)
 
-    sp = sub.add_parser("convert", help="PDF → md")
-    sp.add_argument("pdf")
+    sp = sub.add_parser("convert", help="PDF or image sequence → md")
+    sp.add_argument("input", nargs="+",
+                    help="a .pdf, or a directory/glob/list of images (png/jpg/webp/heic/tif/bmp)")
+    sp.add_argument("--name", help="stem for bundled-image PDF (default: source dir name)")
     sp.add_argument("--out", default=str(DEFAULT_OUT))
     sp.add_argument("--lang", default="japan", help="OCR language hint")
     sp.add_argument("--backend", default="hybrid-auto-engine",

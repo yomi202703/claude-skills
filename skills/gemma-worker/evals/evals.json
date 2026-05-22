@@ -1,0 +1,160 @@
+{
+  "skill_name": "gemma-worker",
+  "skill_version": "0.1.0",
+  "description": "Provider-agnostic LLM worker orchestrator. Evals exercise each of the six playbooks plus supervisor routing. Set WORKER_LLM_* env vars before running.",
+  "evals": [
+    {
+      "id": 1,
+      "eval_name": "deadcode-detects-unused-export",
+      "playbook": "deadcode",
+      "prompt": "find unused exports in tests/fixtures/sample_repo",
+      "expected_output": "Artifact list with the symbol `unused_orphan_xyz` flagged. Both LLM axes and the vulture runner should find it. Escalation artifact present pointing at deadcode skill.",
+      "files": ["tests/fixtures/sample_repo/unused_module.py"],
+      "assertions": [
+        {"name": "playbook_chosen", "text": "output.playbook == 'deadcode'"},
+        {"name": "finds_unused_orphan", "text": "artifacts contain symbol 'unused_orphan_xyz'"},
+        {"name": "valid_verdict", "text": "verdict in {PROMOTE, HOLD}"},
+        {"name": "trace_id_present", "text": "trace_id is non-empty"},
+        {"name": "vulture_runner_fired", "text": "any artifact has axis == 'tool:vulture'"},
+        {"name": "axis_llm_fired", "text": "any artifact has axis starting with 'axis-'"},
+        {"name": "escalation_present", "text": "escalations list contains entry with file == 'deadcode_skill_handoff'"}
+      ]
+    },
+    {
+      "id": 2,
+      "eval_name": "deadcode-clean-codebase",
+      "playbook": "deadcode",
+      "prompt": "find unused exports in evals/fixtures/clean_module",
+      "expected_output": "Artifacts list empty or only contains low-severity items. Verdict PROMOTE acceptable.",
+      "files": ["evals/fixtures/clean_module/no_unused.py"],
+      "assertions": [
+        {"name": "playbook_chosen", "text": "playbook == 'deadcode'"},
+        {"name": "no_high_severity", "text": "no artifact has severity == 'high'"}
+      ]
+    },
+    {
+      "id": 3,
+      "eval_name": "inconsistency-docstring-vs-code",
+      "playbook": "inconsistency",
+      "prompt": "check docstring/code consistency in evals/fixtures/docstring_mismatch",
+      "expected_output": "axis-01 (docstring vs code) flags swap_args.py. ruff runner may also flag style/naming. Escalation to code-consistency skill present.",
+      "files": ["evals/fixtures/docstring_mismatch/swap_args.py"],
+      "assertions": [
+        {"name": "playbook_chosen", "text": "output.playbook == 'inconsistency'"},
+        {"name": "finds_mismatch", "text": "artifacts is non-empty"},
+        {"name": "evidence_present", "text": "first artifact has non-empty evidence"},
+        {"name": "docstring_axis_fired", "text": "any artifact has axis == 'axis-01-docstring-vs-code'"},
+        {"name": "escalation_present", "text": "escalations list contains entry with file == 'code_consistency_skill_handoff'"}
+      ]
+    },
+    {
+      "id": 4,
+      "eval_name": "gap-missing-error-handling",
+      "playbook": "gap",
+      "prompt": "audit evals/fixtures/incomplete_module for missing best practices",
+      "expected_output": "axis-01 (error handling) flags no try/except. axis-02 (tests/docs) flags missing docstrings.",
+      "files": ["evals/fixtures/incomplete_module/no_safety_nets.py"],
+      "assertions": [
+        {"name": "playbook_chosen", "text": "output.playbook == 'gap'"},
+        {"name": "finds_gaps", "text": "artifacts is non-empty"},
+        {"name": "error_handling_axis", "text": "any artifact has axis == 'axis-01-error-handling'"}
+      ]
+    },
+    {
+      "id": 5,
+      "eval_name": "research-escalates-to-ceo",
+      "playbook": "research",
+      "prompt": "find the latest LangGraph release notes for 2026-05",
+      "expected_output": "Single escalation entry to CEO with queries field. next_action mentions /deep or /deep-strict.",
+      "files": [],
+      "assertions": [
+        {"name": "playbook_chosen", "text": "output.playbook == 'research'"},
+        {"name": "escalates", "text": "escalations list contains entry with file == 'ceo_escalation'"},
+        {"name": "queries_present", "text": "escalation entry has non-empty queries list"},
+        {"name": "deep_or_strict_mentioned", "text": "escalation next_action mentions /deep or /deep-strict"}
+      ]
+    },
+    {
+      "id": 6,
+      "eval_name": "optimization-flags-quadratic-loop",
+      "playbook": "optimization",
+      "prompt": "find optimization opportunities in evals/fixtures/quadratic_loop",
+      "expected_output": "axis-01 (quadratic loops) flags the nested for-for pattern. Suggestion non-empty.",
+      "files": ["evals/fixtures/quadratic_loop/slow_lookup.py"],
+      "assertions": [
+        {"name": "playbook_chosen", "text": "output.playbook == 'optimization'"},
+        {"name": "finds_loop", "text": "artifacts is non-empty"},
+        {"name": "suggestion_present", "text": "first artifact has non-empty suggestion"},
+        {"name": "quadratic_axis_fired", "text": "any artifact has axis == 'axis-01-quadratic-loops'"}
+      ]
+    },
+    {
+      "id": 7,
+      "eval_name": "synthesis-multi-file-overview",
+      "playbook": "synthesis",
+      "prompt": "give a holistic overview of evals/fixtures/multi_file_repo",
+      "expected_output": "Per-file summaries plus up to 5 global themes. Artifacts use axis == 'file_summary' and 'global_theme'.",
+      "files": [
+        "evals/fixtures/multi_file_repo/auth.py",
+        "evals/fixtures/multi_file_repo/storage.py",
+        "evals/fixtures/multi_file_repo/api.py"
+      ],
+      "assertions": [
+        {"name": "playbook_chosen", "text": "output.playbook == 'synthesis'"},
+        {"name": "file_summaries_present", "text": "any artifact has axis == 'file_summary'"},
+        {"name": "global_themes_present", "text": "any artifact has axis == 'global_theme'"}
+      ]
+    },
+    {
+      "id": 8,
+      "eval_name": "supervisor-routes-deadcode-from-natural-language",
+      "playbook": "auto",
+      "prompt": "find code that's defined but never used in tests/fixtures/sample_repo",
+      "expected_output": "Supervisor classifies as deadcode despite slightly different phrasing.",
+      "files": ["tests/fixtures/sample_repo/unused_module.py"],
+      "assertions": [
+        {"name": "routed_deadcode", "text": "output playbook == 'deadcode'"}
+      ]
+    },
+    {
+      "id": 9,
+      "eval_name": "supervisor-routes-synthesis-from-overview-request",
+      "playbook": "auto",
+      "prompt": "summarize what this repository does as a whole: evals/fixtures/multi_file_repo",
+      "expected_output": "Supervisor classifies as synthesis (overview / holistic intent).",
+      "files": [
+        "evals/fixtures/multi_file_repo/auth.py",
+        "evals/fixtures/multi_file_repo/storage.py",
+        "evals/fixtures/multi_file_repo/api.py"
+      ],
+      "assertions": [
+        {"name": "routed_synthesis", "text": "output playbook == 'synthesis'"}
+      ]
+    },
+    {
+      "id": 10,
+      "eval_name": "supervisor-routes-research-from-web-question",
+      "playbook": "auto",
+      "prompt": "what changed between Pydantic 2 and Pydantic 3, with sources",
+      "expected_output": "Supervisor classifies as research and the artifact is a CEO escalation.",
+      "files": [],
+      "assertions": [
+        {"name": "routed_research", "text": "output playbook == 'research'"},
+        {"name": "escalates", "text": "any artifact has file == 'ceo_escalation'"}
+      ]
+    }
+  ],
+  "metadata": {
+    "thresholds_promote": {
+      "pass_rate": 0.80,
+      "p95_latency_ms": 15000,
+      "evidence_coverage": 0.80
+    },
+    "thresholds_rollback": {
+      "pass_rate": 0.56,
+      "p95_latency_ms": 21000,
+      "evidence_coverage": 0.56
+    },
+    "notes": "Thresholds align with verdict_mapper in ai-pipeline-audit. Each eval is independent; failures should be diagnosed individually before tightening thresholds."
+  }
+}

@@ -143,6 +143,13 @@ def compress_chunk(
     return chunk, result.text.strip() + "\n", stats
 
 
+_LEVEL_TEMPLATES = {
+    "light": "compress_chunk_light.md",
+    "medium": "compress_chunk_medium.md",
+    "aggressive": "compress_chunk_aggressive.md",
+}
+
+
 def run_stage2(
     cleaned_md: Path,
     out_path: Path,
@@ -152,6 +159,7 @@ def run_stage2(
     model: str = "claude-haiku-4-5-20251001",
     parallelism: int = 6,
     timeout: int = 600,
+    level: str = "light",
 ) -> dict:
     text = cleaned_md.read_text(encoding="utf-8")
     preamble, turns = parse_turns(text)
@@ -161,7 +169,17 @@ def run_stage2(
 
     chunks = make_chunks(turns, chunk_size, overlap)
 
-    template_path = Path(__file__).resolve().parent / "prompts" / "compress_chunk.md"
+    if level not in _LEVEL_TEMPLATES:
+        raise ValueError(f"invalid level: {level} (expected one of {list(_LEVEL_TEMPLATES)})")
+    template_name = _LEVEL_TEMPLATES[level]
+    template_path = Path(__file__).resolve().parent / "prompts" / template_name
+    if not template_path.exists():
+        # Fallback to legacy filename
+        legacy = Path(__file__).resolve().parent / "prompts" / "compress_chunk.md"
+        if legacy.exists():
+            template_path = legacy
+        else:
+            raise FileNotFoundError(f"prompt template not found: {template_path}")
 
     results: dict[int, tuple[Chunk, str, dict]] = {}
     all_stats: list[dict] = []
@@ -182,7 +200,7 @@ def run_stage2(
     # Update preamble to record stage 2.
     preamble_lines = preamble.rstrip().splitlines()
     # Replace or append a "stage:" line.
-    stage_line = f"> stages: stage1 + stage2 ({model})"
+    stage_line = f"> stages: stage1 + stage2 ({model}, level={level})"
     new_preamble_lines: list[str] = []
     stage_replaced = False
     for line in preamble_lines:
@@ -228,6 +246,7 @@ def main() -> int:
     ap.add_argument("--model", default="claude-haiku-4-5-20251001")
     ap.add_argument("--parallelism", type=int, default=6)
     ap.add_argument("--timeout", type=int, default=600)
+    ap.add_argument("--level", choices=["light", "medium", "aggressive"], default="light")
     args = ap.parse_args()
 
     if not args.cleaned_md.exists():
@@ -242,6 +261,7 @@ def main() -> int:
         model=args.model,
         parallelism=args.parallelism,
         timeout=args.timeout,
+        level=args.level,
     )
     import json as _json
     print(_json.dumps(summary, ensure_ascii=False, indent=2))

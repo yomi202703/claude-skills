@@ -22,6 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import stage1  # noqa: E402
 import stage2  # noqa: E402
+import stage3  # noqa: E402
 
 
 def _candidate_dirs(cwd: Path) -> list[Path]:
@@ -138,6 +139,10 @@ def main() -> int:
     ap.add_argument("--model", default="claude-haiku-4-5-20251001")
     ap.add_argument("--parallelism", type=int, default=6)
     ap.add_argument("--timeout", type=int, default=600)
+    ap.add_argument("--level", choices=["light", "medium", "aggressive"], default="medium",
+                    help="Stage 2 圧縮レベル (default: medium)")
+    ap.add_argument("--no-stage3", action="store_true",
+                    help="Stage 3 (全体サマリ) を実行しない")
     args = ap.parse_args()
 
     # Resolve source JSONL.
@@ -191,6 +196,7 @@ def main() -> int:
             model=args.model,
             parallelism=args.parallelism,
             timeout=args.timeout,
+            level=args.level,
         )
     finally:
         try:
@@ -198,20 +204,35 @@ def main() -> int:
         except OSError:
             pass
 
+    stage2_size = out_path.stat().st_size
+
+    # Stage 3: hierarchical overview
+    s3: dict = {}
+    if not args.no_stage3 and not s2.get("errors"):
+        s3 = stage3.run_stage3(
+            out_path,
+            out_path,
+            model=args.model,
+            timeout=args.timeout,
+        )
+
     result = {
         "jsonl": str(jsonl),
         "out_path": str(out_path),
-        "stage": "1+2",
+        "stage": "1+2+3" if (not args.no_stage3 and s3.get("stage3") == "ok") else "1+2",
+        "level": args.level,
         "turns": n_turns,
         "stage1_size_bytes": stage1_size,
+        "stage2_size_bytes": stage2_size,
         "final_size_bytes": out_path.stat().st_size,
         "compression_ratio": (
-            round(out_path.stat().st_size / stage1_size, 3) if stage1_size else None
+            round(stage2_size / stage1_size, 3) if stage1_size else None
         ),
-        **s2,
+        "stage2": s2,
+        "stage3": s3 if s3 else None,
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 1 if s2.get("errors") else 0
+    return 1 if s2.get("errors") or s3.get("stage3") == "error" else 0
 
 
 if __name__ == "__main__":
