@@ -2,6 +2,8 @@
 
 ## Prerequisite: MinerU venv
 
+### macOS / Linux
+
 ```bash
 mkdir -p ~/mineru-test && cd ~/mineru-test
 uv venv --python 3.12
@@ -9,7 +11,27 @@ source .venv/bin/activate
 uv pip install -U "mineru[all]"
 ```
 
-The dispatcher hardcodes `~/mineru-test/.venv/bin/{mineru,mineru-api}` — adjust `VENV_BIN` in `scripts/dispatcher.py` if you install elsewhere.
+### Windows (PowerShell)
+
+```powershell
+New-Item -ItemType Directory "$env:USERPROFILE\mineru-test" -Force | Out-Null
+Set-Location "$env:USERPROFILE\mineru-test"
+python -m uv venv --python 3.12          # or: uv venv --python 3.12 if uv is on PATH
+python -m uv pip install --python .\.venv\Scripts\python.exe -U "mineru[all]"
+```
+
+Note: on Windows the venv binaries live in `.venv\Scripts\` (with `.exe` suffix), and the dispatcher branches on `os.name == "nt"` automatically.
+
+The dispatcher hardcodes `~/mineru-test/.venv/{bin,Scripts}/{mineru,mineru-api}[.exe]` — adjust `VENV_BIN` in `scripts/dispatcher.py` if you install elsewhere.
+
+## GPU requirement
+
+The VLM backends (`hybrid-auto-engine` default, `vlm-auto-engine`) require a CUDA GPU via lmdeploy. Without CUDA:
+
+- `start-server` refuses with a hint
+- `convert` auto-falls-back to `--backend pipeline` (CPU-only, ~85% accuracy)
+
+This affects most Windows laptops and Apple Silicon Macs. Use a CUDA Linux box or rent cloud GPU if you need ~95% accuracy.
 
 ## First-run downloads
 

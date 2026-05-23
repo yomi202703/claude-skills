@@ -16,19 +16,29 @@ import os
 import re
 import signal
 import subprocess
+import sys
+import tempfile
 import time
 import urllib.request
 from glob import glob
 from pathlib import Path
 
+IS_WIN = os.name == "nt"
+
 IMG_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".bmp", ".heic"}
 _NAT = re.compile(r"(\d+)")
 
-VENV_BIN = Path.home() / "mineru-test" / ".venv" / "bin"
-MINERU_API = VENV_BIN / "mineru-api"
-MINERU_CLI = VENV_BIN / "mineru"
-STATE_FILE = Path("/tmp/pdf-to-md-server.json")
-LOG_FILE = Path("/tmp/pdf-to-md-server.log")
+if IS_WIN:
+    VENV_BIN = Path.home() / "mineru-test" / ".venv" / "Scripts"
+    MINERU_API = VENV_BIN / "mineru-api.exe"
+    MINERU_CLI = VENV_BIN / "mineru.exe"
+else:
+    VENV_BIN = Path.home() / "mineru-test" / ".venv" / "bin"
+    MINERU_API = VENV_BIN / "mineru-api"
+    MINERU_CLI = VENV_BIN / "mineru"
+_TMP = Path(tempfile.gettempdir())
+STATE_FILE = _TMP / "pdf-to-md-server.json"
+LOG_FILE = _TMP / "pdf-to-md-server.log"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 18000
 DEFAULT_OUT = Path.home() / "preprocessed"
@@ -69,6 +79,12 @@ def cmd_start_server(args) -> dict:
     if state is not None and _server_alive(state):
         return {"already_running": True, **state}
 
+    if not _cuda_available():
+        return {
+            "error": "CUDA not available — the VLM server requires a CUDA GPU.",
+            "hint": "Skip start-server and run: dispatcher.py convert <pdf> --backend pipeline",
+        }
+
     log_f = open(LOG_FILE, "ab")
     proc = subprocess.Popen(
         [
@@ -79,7 +95,8 @@ def cmd_start_server(args) -> dict:
         ],
         stdout=log_f,
         stderr=log_f,
-        start_new_session=True,
+        start_new_session=(os.name != "nt"),
+        creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0),
     )
     state = {
         "pid": proc.pid,
@@ -102,18 +119,46 @@ def cmd_start_server(args) -> dict:
     return {"error": "timeout waiting for server ready", **state, "log_hint": f"tail -50 {LOG_FILE}"}
 
 
+def _kill_pid(pid: int) -> None:
+    if IS_WIN:
+        try:
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)],
+                           capture_output=True, check=False)
+        except FileNotFoundError:
+            pass
+        return
+    try:
+        os.killpg(os.getpgid(pid), signal.SIGTERM)
+    except (ProcessLookupError, PermissionError, OSError):
+        pass
+
+
 def cmd_stop_server(args) -> dict:
     state = _read_state()
     if not state:
         return {"stopped": False, "reason": "no state file"}
     pid = state.get("pid")
     if isinstance(pid, int):
-        try:
-            os.killpg(os.getpgid(pid), signal.SIGTERM)
-        except (ProcessLookupError, PermissionError):
-            pass
+        _kill_pid(pid)
     STATE_FILE.unlink(missing_ok=True)
     return {"stopped": True, "pid": pid}
+
+
+def _cuda_available() -> bool:
+    """Probe the venv's torch for CUDA. ~0.5s; result is not cached."""
+    if not MINERU_CLI.exists():
+        return False
+    py = VENV_BIN / ("python.exe" if IS_WIN else "python")
+    if not py.exists():
+        return False
+    try:
+        out = subprocess.run(
+            [str(py), "-c", "import torch,sys;sys.stdout.write('1' if torch.cuda.is_available() else '0')"],
+            capture_output=True, text=True, timeout=15,
+        )
+        return out.stdout.strip() == "1"
+    except Exception:
+        return False
 
 
 def cmd_status(args) -> dict:
@@ -194,12 +239,18 @@ def cmd_convert(args) -> dict:
     if state is not None and _server_alive(state):
         server_url = f"http://{state['host']}:{state['port']}"
 
+    backend = args.backend
+    fallback_note = None
+    if not server_url and backend != "pipeline" and not _cuda_available():
+        fallback_note = f"CUDA not available — falling back from {backend} to pipeline"
+        backend = "pipeline"
+
     cmd = [
         str(MINERU_CLI),
         "-p", str(pdf),
         "-o", str(out_dir),
         "-l", args.lang,
-        "-b", args.backend,
+        "-b", backend,
     ]
     if server_url:
         cmd += ["--api-url", server_url]
@@ -216,16 +267,30 @@ def cmd_convert(args) -> dict:
         "out_md": md_path,
         "mode": "warm" if server_url else "cold",
         "elapsed_seconds": elapsed,
-        "backend": args.backend,
+        "backend": backend,
         "returncode": proc.returncode,
         "stderr_tail": (proc.stderr or "")[-500:],
     }
+    if fallback_note:
+        result["fallback"] = fallback_note
     if bundled is not None:
         result["bundled_from_images"] = len(bundled)
     return result
 
 
+def _force_utf8_stdout() -> None:
+    """Windows consoles default to cp932/cp1252; force UTF-8 so JSON with non-ASCII never blows up."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(encoding="utf-8")
+            except Exception:
+                pass
+
+
 def main() -> None:
+    _force_utf8_stdout()
     p = argparse.ArgumentParser(prog="dispatcher.py")
     sub = p.add_subparsers(dest="cmd", required=True)
 

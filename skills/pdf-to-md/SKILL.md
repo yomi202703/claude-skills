@@ -7,7 +7,9 @@ description: Convert a PDF *or a sequence of page images* (Kindle screenshots, s
 
 ## Session lifecycle
 
-MinerU's VLM takes ~3 min to load. **Start the server before the batch, stop it at the end.** `convert` auto-detects the server via `/tmp/pdf-to-md-server.json` (`mode: warm` if alive, `mode: cold` ad-hoc fallback otherwise).
+MinerU's VLM takes ~3 min to load. **Start the server before the batch, stop it at the end.** `convert` auto-detects the server via the state file in the OS temp dir (`/tmp/pdf-to-md-server.json` on macOS/Linux, `%TEMP%\pdf-to-md-server.json` on Windows). `mode: warm` if alive, `mode: cold` ad-hoc fallback otherwise.
+
+**CUDA requirement**: `start-server` and the VLM backends (`hybrid-auto-engine`, `vlm-auto-engine`) require a CUDA GPU. On CPU-only machines (typical Windows laptops, Apple Silicon Macs without CUDA), `start-server` refuses with a hint, and `convert` auto-falls-back to `--backend pipeline` (~85% accuracy, CPU-only, ~1-2 s/page). The fallback note appears in the result JSON as `"fallback": "..."`.
 
 ## Commands
 
@@ -55,5 +57,10 @@ python3 ~/.claude/skills/pdf-to-md/scripts/dispatcher.py stop-server
 ```
 
 macOS Desktop is TCC-protected; copy images to `~/Downloads` or similar first.
+
+## Platform notes
+
+- **macOS / Linux**: use `python3` as shown. State file in `/tmp/`.
+- **Windows**: same commands work via `python` (PowerShell) or `python3` (Git Bash). State file in `%TEMP%\`. The venv lives at `%USERPROFILE%\mineru-test\.venv\Scripts\`. Without an NVIDIA GPU, only the `pipeline` backend works (auto-selected).
 
 Setup notes: `_dev/SETUP.md`.
