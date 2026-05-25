@@ -37,6 +37,19 @@ DEFAULT_EXCLUDE_DIRS = {
 }
 
 
+def _env_exclude_dirs() -> set[str]:
+    """Read `$GEMMA_WORKER_EXCLUDE_DIRS` (comma or colon separated).
+
+    Lets the caller (CLI flag or shell env) inject project-specific exclude
+    names — PII directories, legacy archives, generated artifacts — without
+    having to thread the value through every playbook signature.
+    """
+    raw = os.environ.get("GEMMA_WORKER_EXCLUDE_DIRS", "")
+    if not raw:
+        return set()
+    return {p.strip() for p in raw.replace(":", ",").split(",") if p.strip()}
+
+
 def iter_target_files(
     targets: Iterable[str | Path],
     *,
@@ -45,7 +58,10 @@ def iter_target_files(
     exclude_dirs: set[str] | None = None,
 ) -> list[Path]:
     exts = extensions if extensions is not None else DEFAULT_FILE_EXTENSIONS
-    excludes = exclude_dirs if exclude_dirs is not None else DEFAULT_EXCLUDE_DIRS
+    if exclude_dirs is not None:
+        excludes = exclude_dirs | _env_exclude_dirs()
+    else:
+        excludes = DEFAULT_EXCLUDE_DIRS | _env_exclude_dirs()
     out: list[Path] = []
     for t in targets:
         p = Path(t).expanduser()

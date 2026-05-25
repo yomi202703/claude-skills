@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 from typing import Any
 
@@ -13,6 +14,9 @@ PLAYBOOKS = (
     "research",
     "optimization",
     "synthesis",
+    "critique",
+    "devils_advocate",
+    "steelman",
     "auto",
 )
 
@@ -47,6 +51,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="normal",
         help="Queue priority for the worker pool.",
     )
+    p.add_argument(
+        "--exclude-dirs",
+        default=None,
+        help=(
+            "Comma- or colon-separated directory names to skip when walking "
+            "the scan root, e.g. `_data,_archive,outputs`. Merged with the "
+            "built-in defaults (.venv, node_modules, .git, build, dist, ...). "
+            "Use this to keep project-specific PII / legacy / generated dirs "
+            "out of the LLM call stream. Also honored via "
+            "$GEMMA_WORKER_EXCLUDE_DIRS."
+        ),
+    )
     return p.parse_args(argv)
 
 
@@ -63,6 +79,11 @@ async def _run(ns: argparse.Namespace) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     ns = parse_args(argv)
+    if ns.exclude_dirs:
+        # Surface the flag as an env var so `iter_target_files` (which is
+        # called deep inside each playbook) picks it up without threading
+        # the value through every playbook signature.
+        os.environ["GEMMA_WORKER_EXCLUDE_DIRS"] = ns.exclude_dirs
     try:
         result = asyncio.run(_run(ns))
     except KeyboardInterrupt:

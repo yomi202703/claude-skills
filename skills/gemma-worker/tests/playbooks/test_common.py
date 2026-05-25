@@ -72,3 +72,36 @@ def test_iter_target_files_empty_for_nonexistent():
 def test_iter_target_files_includes_python():
     files = iter_target_files([str(FIXTURE_REPO)])
     assert any(p.suffix == ".py" for p in files)
+
+
+def test_iter_target_files_honors_env_exclude(tmp_path, monkeypatch):
+    """`GEMMA_WORKER_EXCLUDE_DIRS` lets the caller (Claude / CLI) keep
+    project-specific PII / legacy dirs out of the scan stream without
+    threading the value through every playbook signature.
+    """
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "ok.py").write_text("x = 1")
+    (tmp_path / "_data").mkdir()
+    (tmp_path / "_data" / "secret.py").write_text("pii = 'leak'")
+    (tmp_path / "_archive").mkdir()
+    (tmp_path / "_archive" / "old.py").write_text("legacy = True")
+
+    # Without env override: archive + data are walked.
+    monkeypatch.delenv("GEMMA_WORKER_EXCLUDE_DIRS", raising=False)
+    files = iter_target_files([str(tmp_path)])
+    names = {p.name for p in files}
+    assert {"ok.py", "secret.py", "old.py"} <= names
+
+    # With env override (comma- or colon-separated): both are excluded.
+    monkeypatch.setenv("GEMMA_WORKER_EXCLUDE_DIRS", "_data,_archive")
+    files = iter_target_files([str(tmp_path)])
+    names = {p.name for p in files}
+    assert "ok.py" in names
+    assert "secret.py" not in names
+    assert "old.py" not in names
+
+    # Colon separator also works (PATH-style).
+    monkeypatch.setenv("GEMMA_WORKER_EXCLUDE_DIRS", "_data:_archive")
+    files = iter_target_files([str(tmp_path)])
+    names = {p.name for p in files}
+    assert "secret.py" not in names

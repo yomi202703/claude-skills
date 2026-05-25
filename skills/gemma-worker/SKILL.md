@@ -89,6 +89,22 @@ inside a project is enough — there is no need to enumerate paths in the
 task string. To override, either pass paths inline or set
 `GEMMA_WORKER_PROJECT_ROOT` in the environment.
 
+### Excluding directories (PII / legacy / generated)
+
+The built-in excludes cover dependency / build / cache / VCS dirs
+(`.venv`, `node_modules`, `__pycache__`, `dist`, `build`, `.git`, ...).
+**Project-specific dirs that hold PII, legacy archives, or generated
+artifacts must be passed explicitly** — the worker has no way to infer
+project conventions on its own. Two equivalent surfaces:
+
+- `--exclude-dirs _data,_archive,outputs` (CLI flag)
+- `GEMMA_WORKER_EXCLUDE_DIRS=_data:_archive:outputs` (env var)
+
+Caller responsibility: before invoking the worker, read the project's
+`CLAUDE.md` / `.gitignore` for the "do not touch" list and pass those
+names. Customer data and personal information in particular must be
+excluded by name; the worker has no PII detector.
+
 ## Output schema
 
 ```json
