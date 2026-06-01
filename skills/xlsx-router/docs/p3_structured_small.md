@@ -5,7 +5,7 @@ Read with merges, apply merge rules, emit target format directly.
 ## Command
 
 ```bash
-python3 ~/.claude/skills/xlsx/scripts/xlsx_read.py <file> --sheet "<name>" \
+python3 ~/.claude/skills/xlsx-router/scripts/xlsx_read.py <file> --sheet "<name>" \
   --range A{header_rows[0]}:{last_col}{data_rows[1]} --include-merges --format json
 ```
 
@@ -33,6 +33,17 @@ When `content_type=notes` (e.g. a sheet of guidance text, not a data table):
 - Top line: `> auto-selected: P3 (structured/small/<content_type>, <sheet>, ...)`
 - Save to `<output_dir>/<sheet_slug>.<ext>`
 - **Emit every logical row** from `data_rows[0]` through `data_rows[1]` — no truncation
+
+## Fidelity check (required)
+
+Before reporting done, confirm no rows were silently dropped. Expected logical rows = `data_rows[1] - data_rows[0] + 1` (for `table`: Markdown body rows; for `rules`: number of `R###` entries; for transposed sheets: number of field records). Count what you emitted and compare:
+
+```bash
+# table example: body row count = matching lines minus the header + separator (2)
+echo $(( $(grep -c '^|' <output_dir>/<sheet_slug>.md) - 2 ))
+```
+
+If the counts differ, locate the dropped rows before finishing — do not report success on a partial output.
 
 ## Merge handling
 

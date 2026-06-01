@@ -69,8 +69,13 @@ def _parse_scalar(raw: str) -> str | int | bool | list[str] | None:
 
 
 def parse_frontmatter(text: str) -> tuple[dict, str]:
-    """Return (metadata_dict, body_without_frontmatter)."""
-    m = _FRONTMATTER_RE.match(text)
+    """Return (metadata_dict, body_without_frontmatter).
+
+    Tolerates a leading BOM / blank lines before the opening ``---`` so a
+    stray newline at the top of a file does not silently drop the entire
+    frontmatter.
+    """
+    m = _FRONTMATTER_RE.match(text.lstrip("﻿ \t\r\n"))
     if not m:
         return {}, text
     meta_raw, body = m.group(1), m.group(2)

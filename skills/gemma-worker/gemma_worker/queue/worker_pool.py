@@ -14,7 +14,8 @@ PRIORITY = {"high": 0, "normal": 1, "low": 2}
 class _Item:
     priority: int
     seq: int
-    coro: Any = field(compare=False)
+    # `coro is None` is the close sentinel pushed by WorkerPool.close().
+    coro: Awaitable[Any] | None = field(compare=False)
     fut: asyncio.Future[Any] = field(compare=False)
 
 
@@ -31,7 +32,14 @@ class AdaptiveRateController:
     def record(self, latency_ms: int) -> None:
         self._latencies.append(latency_ms)
 
-    def observe(self) -> int:
+    def observe_and_adjust(self) -> int:
+        """Compute p95 latency and mutate `self.current_concurrency` accordingly.
+
+        Despite the `observe_` prefix this method writes state; the rename from
+        `observe()` was made because the previous name implied a read-only
+        operation while the body adjusts concurrency. Returns the new
+        concurrency.
+        """
         if len(self._latencies) < max(5, self.window // 2):
             return self.current_concurrency
         sorted_l = sorted(self._latencies)
@@ -54,7 +62,12 @@ class WorkerPool:
         env_concurrency = int(os.environ.get("GEMMA_WORKER_CONCURRENCY", "4"))
         env_threshold = int(os.environ.get("GEMMA_WORKER_P95_THRESHOLD_MS", "15000"))
         self._max = max_concurrency or env_concurrency
-        self._sem = asyncio.Semaphore(self._max)
+        # Dynamic concurrency: workers gate on `rate.current_concurrency` via
+        # a condition variable instead of a fixed Semaphore. This is what
+        # actually makes AdaptiveRateController effective — the previous
+        # design computed current_concurrency but never applied it.
+        self._inflight = 0
+        self._cond = asyncio.Condition()
         self._queue: asyncio.PriorityQueue[_Item] = asyncio.PriorityQueue()
         self._counter = 0
         self._workers: list[asyncio.Task[None]] = []
@@ -88,20 +101,31 @@ class WorkerPool:
             if item.coro is None:
                 self._queue.task_done()
                 return
-            async with self._sem:
-                started = time.perf_counter()
-                try:
-                    result = await item.coro
-                    if not item.fut.done():
-                        item.fut.set_result(result)
-                except BaseException as e:
-                    if not item.fut.done():
-                        item.fut.set_exception(e)
-                finally:
-                    elapsed_ms = int((time.perf_counter() - started) * 1000)
-                    self.rate.record(elapsed_ms)
-                    self.rate.observe()
-                    self._queue.task_done()
+            # Gate on the (dynamic) current_concurrency. When latency rises
+            # and the rate controller halves the budget, surplus workers
+            # block here until inflight drops below the new ceiling.
+            async with self._cond:
+                while self._inflight >= self.rate.current_concurrency:
+                    await self._cond.wait()
+                self._inflight += 1
+            started = time.perf_counter()
+            try:
+                result = await item.coro
+                if not item.fut.done():
+                    item.fut.set_result(result)
+            except BaseException as e:
+                if not item.fut.done():
+                    item.fut.set_exception(e)
+            finally:
+                elapsed_ms = int((time.perf_counter() - started) * 1000)
+                self.rate.record(elapsed_ms)
+                self.rate.observe_and_adjust()
+                async with self._cond:
+                    self._inflight -= 1
+                    # notify_all so workers waiting under a previously
+                    # higher ceiling can re-check after a recovery.
+                    self._cond.notify_all()
+                self._queue.task_done()
 
     async def close(self) -> None:
         self._closed = True

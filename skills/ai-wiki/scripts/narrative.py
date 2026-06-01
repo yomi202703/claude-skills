@@ -28,8 +28,12 @@ from vault import Page, Vault
 # Bracketed markers that appear as [X] tokens inside tree bodies.
 FIXED_BRACKETED_SYMBOLS: frozenset[str] = frozenset(
     {"?", "★", "◯", "✕", "∥", "⛔", "!", "∴", "⤴", "⤵", "⟳", "↺",
-     "??", "⊂", "⊕"}
+     "??", "⊂", "⊕", "~"}
 )
+# `[~]` = model-inferred link: an edge the writer (LLM) synthesized that the
+# source does not state explicitly. Marks *provenance* (not source-grounded),
+# not confidence — consistent with the working-hypothesis principle. Surfaced
+# by the faithfulness check; verify against the source before trusting.
 
 # Additional edge markers allowed inline (not bracketed).
 FIXED_INLINE_SYMBOLS: frozenset[str] = frozenset({"→", "⇒"})

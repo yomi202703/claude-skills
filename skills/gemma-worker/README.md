@@ -28,14 +28,32 @@ uv run --project ~/.claude/skills/gemma-worker \
 
 ## Playbooks
 
-| name           | input                       | output kind                              |
-|----------------|-----------------------------|------------------------------------------|
-| `deadcode`     | path(s) in task             | unused exports per file                  |
-| `inconsistency`| path(s) in task             | internal contradictions                  |
-| `gap`          | task scope + path(s)        | missing items vs. an expected checklist  |
-| `research`     | research question           | escalation hand-off to the CEO           |
-| `optimization` | path(s) in task             | local optimization suggestions           |
-| `synthesis`    | path(s) in task             | per-file summaries + 5 global themes     |
+Most file-based playbooks scan **one source file at a time** with code-oriented
+axes — they do not detect cross-file drift. `synthesis` crosses files;
+`critique` accepts both code and prose; `devils_advocate` / `steelman`
+consume prior-run JSON artifacts.
+
+| playbook        | scope       | content target  | finding kind                                       |
+|-----------------|-------------|-----------------|----------------------------------------------------|
+| `deadcode`      | intra-file  | code only       | unused exports, unreferenced helpers, dead branches |
+| `inconsistency` | intra-file  | code only       | docstring↔code, type↔usage, name↔behavior          |
+| `gap`           | intra-file  | code only       | missing error handling / tests / edge cases        |
+| `optimization`  | intra-file  | code only       | quadratic loops, redundant I/O, wasted allocations |
+| `research`      | task-only   | n/a             | escalation hand-off (worker can't browse the web)  |
+| `synthesis`     | cross-file  | any (incl .md)  | per-file summaries + top-5 global themes (2-tier if >10 files) |
+| `critique`      | intra-file  | any (code+prose) | unstated assumptions, reasoning leaps, alt framings, tradeoff blindspots, scope mismatches |
+| `devils_advocate` | derived (prior `.json` artifacts) | n/a | asymmetric counter-evidence against existing findings |
+| `steelman`      | derived (prior `.json` artifacts) | n/a | strongest case for the opposite verdict (~2x cost vs DA) |
+
+**Picking a playbook**:
+- Cross-file consistency of prompt docs, configs, or other `.md` → `synthesis`
+  (read its `global_theme` artifacts).
+- Per-file code audit → match by finding kind above.
+- Abstract / reference-level critique of either code or prose → `critique`.
+- Layered review (after Layer A runs): `devils_advocate` rebuts findings,
+  `steelman` argues the opposite verdict. Both consume the prior run's JSON.
+- Mismatched scope/content (e.g. `inconsistency` on `.md`) returns 0 findings
+  and forces `ROLLBACK`. Pick again rather than retrying.
 
 `--playbook auto` lets the supervisor classify the task.
 

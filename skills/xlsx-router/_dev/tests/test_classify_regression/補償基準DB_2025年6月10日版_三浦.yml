@@ -2,7 +2,7 @@ all_docs_to_read:
 - manifest.md
 - multi_sheet.md
 - p2_db_large.md
-docs_base_dir: ~/.claude/skills/xlsx/docs
+docs_base_dir: ~/.claude/skills/xlsx-router/docs
 extra_docs:
 - multi_sheet.md
 - manifest.md
@@ -58,6 +58,8 @@ sheets:
   sheet_slug: マスタ
   size: large
   suggests_visual: false
+  transpose_confidence: 0.0
+  transposed: false
 - cols: 6
   content_type: rules
   cxn_count: 0
@@ -105,6 +107,8 @@ sheets:
   sheet_slug: 対象外_無条件
   size: large
   suggests_visual: false
+  transpose_confidence: 0.0
+  transposed: false
 - cols: 6
   content_type: rules
   cxn_count: 0
@@ -152,6 +156,8 @@ sheets:
   sheet_slug: 対象_無条件
   size: large
   suggests_visual: false
+  transpose_confidence: 0.0
+  transposed: false
 - cols: 6
   content_type: table
   cxn_count: 0
@@ -199,6 +205,8 @@ sheets:
   sheet_slug: 対象対象外
   size: large
   suggests_visual: false
+  transpose_confidence: 0.0
+  transposed: false
 - cols: 6
   content_type: table
   cxn_count: 0
@@ -246,4 +254,6 @@ sheets:
   sheet_slug: 対象
   size: large
   suggests_visual: false
+  transpose_confidence: 0.0
+  transposed: false
 workbook_slug: 補償基準DB_2025年6月10日版_三浦

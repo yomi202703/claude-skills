@@ -1,6 +1,6 @@
 """Golden-baseline regression tests for xlsx_classify.py.
 
-Run: `pytest ~/.claude/skills/xlsx/_dev/tests/ -q`
+Run: `pytest ~/.claude/skills/xlsx-router/_dev/tests/ -q`
 
 On first run (or after intentional classify output changes), delete the
 corresponding <basename>.yml under tests/test_classify_regression/ and
@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-SKILL_DIR = Path.home() / ".claude/skills/xlsx"
+SKILL_DIR = Path.home() / ".claude/skills/xlsx-router"
 CORPUS = SKILL_DIR / "_dev/corpus"
 CLASSIFY = SKILL_DIR / "scripts/xlsx_classify.py"
 

@@ -80,3 +80,14 @@ Values may contain `　` (U+3000). Do not normalize silently — preserve in `so
 
 ### Newlines inside 特記事項
 Free-text cells often contain `\n` (bullet points with ・, numbered lists, etc.). Preserve as a single string with literal `\n`. Downstream consumers must NOT treat `\n` as a record separator.
+
+### 日付シリアル値（date serials returned as raw numbers）
+`xlsx_read.py` / openpyxl convert a cell to a Python datetime **only when its number_format is a date format**. A cell that holds a date serial but is formatted General (or numeric) comes back as a plain `int` — e.g. `46163` instead of `2026-05-20`. This is common when one date column is properly formatted and a sibling column (`回答日`, `確認日`, etc.) is not, so the two look like different types in the same sheet.
+
+There is no way to know from the value alone whether `46163` is "the number 46163" or a date — so **do NOT blanket-convert numbers in the read layer**. Apply this heuristic instead:
+
+- A number in the Excel serial range (≈ 40000–60000 ⇒ years 2009–2064; or 1–60000 with caution) **whose column header implies a date** (`日付`, `日`, `年月日`, `確認日`, `作成日`, `date`, …) **and whose sibling date column converted cleanly** → treat as a date serial.
+- Convert with the 1900 date system: `datetime.date(1899, 12, 30) + datetime.timedelta(days=n)` (the −2 offset absorbs Excel's 1900 leap-year bug). For the rare 1904-based workbook, use `datetime.date(1904, 1, 1) + timedelta(days=n)`.
+- State the assumption in the output provenance header (e.g. `I列「回答日」: Excelシリアル値→ISO日付に変換`). Do not silently mutate values you are unsure about — leave them as numbers and note the ambiguity.
+
+Mirror image: a datetime cell whose time is `00:00:00` (date-only) should be emitted as `YYYY-MM-DD`, not `YYYY-MM-DD 00:00:00`.

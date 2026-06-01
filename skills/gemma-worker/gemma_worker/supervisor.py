@@ -26,6 +26,9 @@ KNOWN_PLAYBOOKS = (
     "research",
     "optimization",
     "synthesis",
+    "critique",
+    "devils_advocate",
+    "steelman",
 )
 
 
@@ -248,12 +251,19 @@ async def run_supervisor(
     await store.init()
     install_tracer(store)
     client = build_client(cfg)
-    pool = WorkerPool()
-    await pool.start()
 
+    # Set the worker context BEFORE spawning the pool's worker tasks. The
+    # worker context lives in ContextVars, and asyncio.create_task() snapshots
+    # the current context at task-creation time. If we set the context after
+    # pool.start(), workers see the default (None) and their spans cannot be
+    # correlated to this supervisor run.
     task_id = uuid.uuid4().hex
     trace_id = uuid.uuid4().hex
     set_worker_context(trace_id=trace_id, task_id=task_id)
+
+    pool = WorkerPool()
+    await pool.start()
+
     await store.start_trace(
         trace_id=trace_id, task_id=task_id, playbook=playbook,
         payload={"task": task},

@@ -45,6 +45,12 @@ class Store:
             await db.execute("PRAGMA wal_autocheckpoint=100")
             await db.execute("PRAGMA busy_timeout=5000")
             await db.executescript(schema)
+            # Migration: add otel_trace_id to existing spans tables that
+            # predate the column. CREATE TABLE IF NOT EXISTS won't add it.
+            cur = await db.execute("PRAGMA table_info(spans)")
+            cols = {row[1] for row in await cur.fetchall()}
+            if "otel_trace_id" not in cols:
+                await db.execute("ALTER TABLE spans ADD COLUMN otel_trace_id TEXT")
             await db.commit()
 
     async def start_trace(self, *, trace_id: str, task_id: str, playbook: str,

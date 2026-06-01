@@ -6,6 +6,7 @@ from typing import Any
 from gemma_worker.client.base import Provider
 from gemma_worker.playbooks._axis_runner import run_axes
 from gemma_worker.playbooks._common import (
+    CODE_FILE_EXTENSIONS,
     extract_targets_from_task,
     iter_target_files,
 )
@@ -24,7 +25,7 @@ async def run(
     reflexion: list[str],
 ) -> list[dict[str, Any]]:
     targets = extract_targets_from_task(task)
-    files = iter_target_files(targets)
+    files = iter_target_files(targets, extensions=CODE_FILE_EXTENSIONS)
     return await run_axes(
         playbook_name="gap",
         axes_dir=AXES_DIR,

@@ -52,8 +52,14 @@ def lint(vault: Vault) -> dict[str, Any]:
     dead_links: list[dict[str, str]] = []
     for (kind, slug), refs in outbound.items():
         for target in refs:
-            inbound_counts[target] += 1
-            if target not in known_slugs:
+            # `[[slug#heading]]` links resolve against the bare page slug;
+            # strip the anchor before existence check. Pure `#anchor`
+            # (same-page) links have an empty base and are not dead.
+            base = target.split("#", 1)[0]
+            if not base:
+                continue
+            inbound_counts[base] += 1
+            if base not in known_slugs:
                 dead_links.append({"from_kind": kind, "from_slug": slug, "to": target})
 
     suggestions: list[str] = []

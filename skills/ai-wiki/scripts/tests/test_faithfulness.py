@@ -1,0 +1,218 @@
+"""Tests for faithfulness.py (offline, subprocess mocked).
+
+The headline test the old mock-everything suite could never express: a tree
+containing a deliberately synthesized causal edge must be FLAGGED by the
+faithfulness pass. Generation mocks always returned a 'valid' body, so a
+fabricated-edge regression was invisible. Here we assert it is caught.
+"""
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import faithfulness  # noqa: E402
+import narrative  # noqa: E402
+import pytest  # noqa: E402
+from narrative_draft import narrative_draft  # noqa: E402
+from vault import Vault  # noqa: E402
+
+
+@pytest.fixture
+def vault(tmp_path) -> Vault:
+    return Vault(root=tmp_path / "ai-wiki")
+
+
+def _mock_llm_sequence(*responses: dict):
+    it = iter(responses)
+
+    def fake_run(*args, **kwargs):
+        envelope = next(it)
+
+        class Fake:
+            returncode = 0
+            stdout = json.dumps(envelope)
+            stderr = ""
+        return Fake()
+    return fake_run
+
+
+# Body with a known set of nodes: 1 fact ([?]), 1 fact ([★]), 1 edge (⟳ transition).
+TREE_BODY = """イントロ。
+
+## 記法
+
+```
+[?] 問題
+```
+
+## ROOT
+
+```
+[?] 根本問題: A という障害
+```
+
+## 1. 解
+
+```
+[★] 採用: B という解
+```
+
+⟳ **だから次の問題**: B は C を招く
+
+## 未配送
+(空)
+"""
+
+
+# ---------- extract_claims ----------
+
+
+def test_extract_claims_classifies_edges_and_facts():
+    claims = faithfulness.extract_claims(TREE_BODY)
+    # legend (## 記法) is skipped; we expect the 3 content nodes
+    assert len(claims) == 3
+    edge = [c for c in claims if c.kind == "edge"]
+    fact = [c for c in claims if c.kind == "fact"]
+    assert len(edge) == 1            # the ⟳ transition
+    assert len(fact) == 2            # the [?] root and [★] solution
+    assert "C を招く" in edge[0].claim
+
+
+def test_extract_claims_treats_inline_arrow_as_edge():
+    body = "## ROOT\n\n```\n[★] X → Y を解く\n```\n"
+    claims = faithfulness.extract_claims(body)
+    assert claims and claims[0].kind == "edge"  # contains →
+
+
+# ---------- judge_claims ----------
+
+
+def test_judge_claims_maps_verdicts_in_order(vault, monkeypatch):
+    claims = faithfulness.extract_claims(TREE_BODY)
+    verdicts = [
+        {"verdict": "supported", "evidence": "A という障害"},
+        {"verdict": "unsupported", "evidence": ""},
+        {"verdict": "source_silent", "evidence": ""},
+    ]
+    env = {"result": json.dumps(verdicts), "is_error": False, "usage": {}, "total_cost_usd": 0.05}
+    monkeypatch.setattr(subprocess, "run", _mock_llm_sequence(env))
+
+    out, cost = faithfulness.judge_claims(vault, "s", claims, "source text", judge_model="sonnet")
+    assert [c.verdict for c in out] == ["supported", "unsupported", "source_silent"]
+    assert cost == 0.05
+
+
+def test_judge_claims_failure_defaults_to_source_silent(vault, monkeypatch):
+    claims = faithfulness.extract_claims(TREE_BODY)
+    env = {"result": "not json", "is_error": False, "usage": {}, "total_cost_usd": 0.01}
+    monkeypatch.setattr(subprocess, "run", _mock_llm_sequence(env))
+    out, _ = faithfulness.judge_claims(vault, "s", claims, "src")
+    # On judge failure, nothing is claimed 'supported'
+    assert all(c.verdict == "source_silent" for c in out)
+
+
+# ---------- run() aggregation + report ----------
+
+
+def test_run_aggregates_and_writes_report(vault, monkeypatch):
+    verdicts = [
+        {"verdict": "supported", "evidence": "A という障害"},
+        {"verdict": "unsupported", "evidence": ""},
+        {"verdict": "source_silent", "evidence": ""},
+    ]
+    env = {"result": json.dumps(verdicts), "is_error": False, "usage": {}, "total_cost_usd": 0.05}
+    monkeypatch.setattr(subprocess, "run", _mock_llm_sequence(env))
+
+    rep = faithfulness.run(vault, "slugX", TREE_BODY, "A という障害がある。", judge_model="sonnet")
+    assert rep["total"] == 3
+    assert rep["supported"] == 1
+    assert rep["unsupported"] == 1
+    assert rep["source_silent"] == 1
+    assert rep["faithfulness_pct"] == pytest.approx(33.3, abs=0.1)
+    assert rep["edge_source_silent"] == 1   # the ⟳ edge was synthesized
+    # report file exists and names the synthesized edge
+    path = vault.root / rep["report_path"]
+    assert path.exists()
+    assert "source_silent" in path.read_text("utf-8")
+
+
+# ---------- annotate_inferred ----------
+
+
+def _items(*specs):
+    # specs: (claim, kind, verdict)
+    return [{"claim": c, "kind": k, "verdict": v} for c, k, v in specs]
+
+
+def test_annotate_marks_only_flagged_edges():
+    items = _items(
+        ("⟳ **だから次の問題**: B は C を招く", "edge", "source_silent"),
+        ("根本問題: A という障害", "fact", "supported"),          # fact: untouched
+    )
+    new_body, n = faithfulness.annotate_inferred(TREE_BODY, items)
+    assert n == 1
+    # the flagged transition line gained a trailing [~]
+    line = next(l for l in new_body.splitlines() if l.startswith("⟳"))
+    assert line.endswith("[~]")
+    # the resulting body still validates (no undefined symbols, ROOT present)
+    assert narrative.detect_undefined_symbols(new_body) == []
+
+
+def test_annotate_is_idempotent():
+    items = _items(("⟳ **だから次の問題**: B は C を招く", "edge", "source_silent"))
+    once, n1 = faithfulness.annotate_inferred(TREE_BODY, items)
+    twice, n2 = faithfulness.annotate_inferred(once, items)
+    assert n1 == 1 and n2 == 0      # second pass marks nothing
+    assert once == twice
+
+
+def test_annotate_skips_supported_edges():
+    items = _items(("⟳ **だから次の問題**: B は C を招く", "edge", "supported"))
+    new_body, n = faithfulness.annotate_inferred(TREE_BODY, items)
+    assert n == 0                   # supported edges are not marked
+
+
+# ---------- [~] symbol now validates ----------
+
+
+def test_inferred_edge_symbol_is_in_dictionary():
+    assert "~" in narrative.FIXED_BRACKETED_SYMBOLS
+    body = "## ROOT\n\n```\n[?] x\n```\n\n## 1. s\n\n```\n[~] 推論エッジ: 多分こう\n```\n"
+    assert narrative.detect_undefined_symbols(body) == []  # no longer 'undefined'
+
+
+# ---------- integration: the adversarial regression test ----------
+
+
+def test_narrative_draft_faithfulness_flags_synthesized_edge(vault, tmp_path, monkeypatch):
+    src = tmp_path / "foo.md"
+    src.write_text("# Foo\n\nA という障害がある。B という解を採用する。\n", encoding="utf-8")
+
+    gen = {"result": TREE_BODY, "is_error": False, "usage": {}, "total_cost_usd": 0.15}
+    cove = {"result": "NO_CORRECTIONS_NEEDED", "is_error": False, "usage": {}, "total_cost_usd": 0.02}
+    # faithfulness judge: root supported, solution supported, edge synthesized
+    judge = {
+        "result": json.dumps([
+            {"verdict": "supported", "evidence": "A という障害がある"},
+            {"verdict": "supported", "evidence": "B という解を採用する"},
+            {"verdict": "source_silent", "evidence": ""},
+        ]),
+        "is_error": False, "usage": {}, "total_cost_usd": 0.04,
+    }
+    # single strategy, coverage off: gen → cove → faithfulness judge
+    monkeypatch.setattr(subprocess, "run", _mock_llm_sequence(gen, cove, judge))
+
+    out = narrative_draft(
+        vault, src, run_coverage=False, run_faithfulness=True, judge_model="sonnet",
+    )
+    assert out["narratives_written"] == ["foo"]
+    assert len(out["faithfulness"]) == 1
+    fr = out["faithfulness"][0]
+    assert fr["edge_source_silent"] == 1            # synthesized edge caught
+    assert fr["unsupported"] == 0                    # no fabricated facts
+    assert fr["fact_faithfulness_pct"] == 100.0      # both facts supported
+    assert any("synthesized spine edge" in w for w in out["warnings"])

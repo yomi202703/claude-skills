@@ -7,7 +7,7 @@ all_docs_to_read:
 - p3_structured_small.md
 - p4_structured_large.md
 - p6_visual.md
-docs_base_dir: ~/.claude/skills/xlsx/docs
+docs_base_dir: ~/.claude/skills/xlsx-router/docs
 extra_docs:
 - multi_sheet.md
 - manifest.md
@@ -48,6 +48,8 @@ sheets:
   sheet_slug: 各シートについて
   size: small
   suggests_visual: false
+  transpose_confidence: 0.0
+  transposed: false
 - cols: 21
   content_type: table
   cxn_count: 0
@@ -103,6 +105,8 @@ sheets:
   sheet_slug: 基本情報一覧
   size: small
   suggests_visual: false
+  transpose_confidence: -0.152
+  transposed: false
 - cols: 11
   content_type: table
   cxn_count: 0
@@ -156,6 +160,8 @@ sheets:
   sheet_slug: QA・資料提供依頼
   size: small
   suggests_visual: false
+  transpose_confidence: -0.293
+  transposed: false
 - cols: 42
   content_type: table
   cxn_count: 0
@@ -210,6 +216,8 @@ sheets:
   sheet_slug: プランコード
   size: large
   suggests_visual: true
+  transpose_confidence: 0.0
+  transposed: false
 - cols: 3
   content_type: table
   cxn_count: 0
@@ -254,4 +262,6 @@ sheets:
   sheet_slug: ペットネーム
   size: large
   suggests_visual: false
+  transpose_confidence: 0.0
+  transposed: false
 workbook_slug: 0120_MSプライマリー生命様_業務概要・QA_20260120

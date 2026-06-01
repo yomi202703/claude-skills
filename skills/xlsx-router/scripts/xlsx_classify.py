@@ -440,6 +440,96 @@ def detect_data_rows(ws, header_row: int) -> list:
     return [first, max(first, last)]
 
 
+def _coarse_type(v) -> Optional[str]:
+    """Coarse cell type for orientation analysis. None for empty cells.
+
+    All-digit strings collapse to 'n' so that text-formatted numbers
+    (zip/phone stored as text) don't spuriously split a row/column that
+    is otherwise numeric. Everything else textual is 's'.
+    """
+    import datetime as _dt
+    if v is None:
+        return None
+    if isinstance(v, bool):
+        return "n"
+    if isinstance(v, (int, float)):
+        return "n"
+    if isinstance(v, (_dt.datetime, _dt.date)):
+        return "d"
+    if isinstance(v, str):
+        s = v.strip()
+        if not s:
+            return None
+        if s.isdigit():
+            return "n"
+        return "s"
+    return "s"
+
+
+def detect_transposed(ws, max_rows: int = 60, max_cols: int = 16) -> dict:
+    """Detect a field-major (transposed) layout: rows are fields, columns are records.
+
+    Principle: in a normal table each COLUMN is type-homogeneous and rows
+    vary; in a transposed table each ROW is type-homogeneous and columns
+    vary. We sample a window, fold text-formatted numbers, drop leading
+    all-text label columns, then compare row-wise vs column-wise type
+    consistency. A symmetric numeric matrix scores high on both axes and
+    is intentionally NOT flagged (difference ≈ 0).
+
+    Returns {transposed, confidence, row_consistency, col_consistency,
+    label_cols}. Cheap: O(max_rows * max_cols), no extra file I/O.
+    """
+    nrows = min(ws.max_row, max_rows)
+    ncols = min(ws.max_column, max_cols)
+    null = {"transposed": False, "confidence": 0.0,
+            "row_consistency": 0.0, "col_consistency": 0.0, "label_cols": 0}
+    if nrows < 5 or ncols < 4:
+        return null
+
+    grid = [[_coarse_type(ws.cell(row=r, column=c).value)
+             for c in range(1, ncols + 1)]
+            for r in range(1, nrows + 1)]
+
+    # Drop leading label columns: among the first 3 columns, a column whose
+    # non-empty cells are predominantly text ('s') is a label spine, not data.
+    label_cols = 0
+    for c in range(min(3, ncols)):
+        col = [grid[r][c] for r in range(nrows) if grid[r][c] is not None]
+        if len(col) >= 3 and sum(t == "s" for t in col) / len(col) >= 0.7:
+            label_cols += 1
+        else:
+            break
+    data_cols = list(range(label_cols, ncols))
+    if len(data_cols) < 3:
+        return null
+
+    def consistency(types: list) -> Optional[float]:
+        nonempty = [t for t in types if t is not None]
+        if len(nonempty) < 3:
+            return None
+        modal = Counter(nonempty).most_common(1)[0][1]
+        return modal / len(nonempty)
+
+    row_scores = [consistency([grid[r][c] for c in data_cols]) for r in range(nrows)]
+    col_scores = [consistency([grid[r][c] for r in range(nrows)]) for c in data_cols]
+    row_scores = [s for s in row_scores if s is not None]
+    col_scores = [s for s in col_scores if s is not None]
+    if len(row_scores) < 4 or not col_scores:
+        return null
+
+    row_consistency = sum(row_scores) / len(row_scores)
+    col_consistency = sum(col_scores) / len(col_scores)
+    diff = row_consistency - col_consistency
+    transposed = row_consistency >= 0.75 and diff >= 0.20
+    return {
+        "transposed": transposed,
+        "confidence": round(diff, 3),
+        "row_consistency": round(row_consistency, 3),
+        "col_consistency": round(col_consistency, 3),
+        "label_cols": label_cols,
+    }
+
+
 def classify_sheet(wb, sn: str, filename: str, drawings_info: Optional[dict] = None) -> dict:
     ws = wb[sn]
     merges = list(ws.merged_cells.ranges)
@@ -459,6 +549,11 @@ def classify_sheet(wb, sn: str, filename: str, drawings_info: Optional[dict] = N
     shape = "db" if looks_like_db else "structured"
     rows = ws.max_row
     cols = ws.max_column
+
+    # Field-major (transposed) detection. When true, the cell-based header row
+    # is meaningless — rows are fields, columns are records — so downstream must
+    # follow transposed.md instead of treating header_row_index as a header.
+    transpose_info = detect_transposed(ws)
 
     content_type = infer_content_type(filename, sn, header_row[:10], ws=ws)
     # Low header confidence ⇒ there's no real table structure here (flow
@@ -520,6 +615,8 @@ def classify_sheet(wb, sn: str, filename: str, drawings_info: Optional[dict] = N
     sheet_docs = docs_map[path] + drawing_docs
     if suggests_visual:
         sheet_docs.append("p6_visual.md")
+    if transpose_info["transposed"]:
+        sheet_docs.append("transposed.md")
 
     return {
         "name": sn,
@@ -539,6 +636,8 @@ def classify_sheet(wb, sn: str, filename: str, drawings_info: Optional[dict] = N
         "data_rows": data_rows_range,
         "data_row_count": data_row_count,
         "header_preview": header_row[:10],
+        "transposed": transpose_info["transposed"],
+        "transpose_confidence": transpose_info["confidence"],
         "has_drawings": has_drawings,
         "has_vml_drawings": has_vml,
         "shape_count": shape_n,
@@ -589,7 +688,7 @@ def main():
             "extra_docs": extra_docs,
             "all_docs_to_read": sorted(all_docs),
             "output_dir_suggestion": f"data/{workbook_slug}",
-            "docs_base_dir": "~/.claude/skills/xlsx/docs",
+            "docs_base_dir": "~/.claude/skills/xlsx-router/docs",
         }
         print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
 

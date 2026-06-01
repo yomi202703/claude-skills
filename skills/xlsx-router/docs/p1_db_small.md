@@ -5,7 +5,7 @@ Read the whole sheet and emit a Markdown table.
 ## Command
 
 ```bash
-python3 ~/.claude/skills/xlsx/scripts/xlsx_read.py <file> --sheet "<name>" --format json
+python3 ~/.claude/skills/xlsx-router/scripts/xlsx_read.py <file> --sheet "<name>" --format json
 ```
 
 ## Output

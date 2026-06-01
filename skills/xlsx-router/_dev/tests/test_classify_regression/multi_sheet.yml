@@ -5,7 +5,7 @@ all_docs_to_read:
 - p1_db_small.md
 - p2_db_large.md
 - p3_structured_small.md
-docs_base_dir: ~/.claude/skills/xlsx/docs
+docs_base_dir: ~/.claude/skills/xlsx-router/docs
 extra_docs:
 - multi_sheet.md
 - manifest.md
@@ -58,6 +58,8 @@ sheets:
   sheet_slug: basic_info
   size: small
   suggests_visual: false
+  transpose_confidence: 0.0
+  transposed: false
 - cols: 3
   content_type: table
   cxn_count: 0
@@ -102,6 +104,8 @@ sheets:
   sheet_slug: master_table
   size: large
   suggests_visual: false
+  transpose_confidence: 0.0
+  transposed: false
 - cols: 3
   content_type: rules
   cxn_count: 0
@@ -147,4 +151,6 @@ sheets:
   sheet_slug: rules_sheet
   size: small
   suggests_visual: false
+  transpose_confidence: 0.0
+  transposed: false
 workbook_slug: multi_sheet

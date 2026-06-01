@@ -13,7 +13,7 @@
 
 2. **Read header + a sample** from the data area:
    ```bash
-   python3 ~/.claude/skills/xlsx/scripts/xlsx_read.py <file> --sheet "<name>" \
+   python3 ~/.claude/skills/xlsx-router/scripts/xlsx_read.py <file> --sheet "<name>" \
      --range A{header_rows[0]}:{last_col}{data_rows[0]+10} --include-merges --format json
    ```
 
@@ -35,9 +35,20 @@
    python3 scripts/<basename>_to_<format>.py
    ```
 
-6. **Report**:
+6. **Fidelity check (required)** — before reporting, assert no rows were dropped. Bake the count into the script and fail loudly on mismatch:
+   ```python
+   expected = data_rows[1] - data_rows[0] + 1   # = field-record count for transposed sheets
+   assert len(records) == expected, f"row drift: {len(records)} != {expected}"
+   ```
+   Independent re-count of the written file:
+   ```bash
+   wc -l <output_dir>/<sheet_slug>.jsonl   # JSONL: subtract meta/legend lines; CSV: subtract 1 header
+   ```
+   If counts differ, find the cause before finishing — do not report success on a partial output.
+
+7. **Report**:
    - Output path: `<output_dir>/<sheet_slug>.<ext>`
-   - Row count (output) = `data_rows[1] - data_rows[0] + 1` (verify match)
+   - Row count (output) = `data_rows[1] - data_rows[0] + 1` (state the verified match)
    - Script path (for user to re-run later)
    - Top of the script should have a docstring: what it does, how merges were interpreted, idempotency guarantee
 

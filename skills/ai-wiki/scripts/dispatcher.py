@@ -16,10 +16,16 @@ Commands (v5):
     note-from-chat <export.md> --study <slug> — chat export → notes/<slug>.md
     note-rewire [--study <slug>] [--apply] — propose/apply anchor wikilinks for orphan notes
     pipeline                     — ingest → lint → narratives (v5)
+    card-draft <slug> [--model <m>] — symbol-walk the tree → exhaustive atomic Q-A deck
+    card-add --slug <s> --front <q> --back <a> — append one card by hand (rare)
+    cards [<slug>]               — dump deck(s) as JSON
 
 v5 paradigm (REQUIREMENTS §14): concepts/ 廃止、ai-digest 独立化。
-`enrich`, `project`, `coverage`, `drill`, `research`, `ingest --from-digest`
-はこの版で全削除された。
+`enrich`, `project`, `coverage`, `research`, `ingest --from-digest`
+はこの版で全削除された。`drill` の自動採点ループも削除。代わりに card-draft が
+narrative tree の記号([?][★][⟳]…)を決定論的に walk して網羅的な暗記デッキを生成
+(網羅は構造保証、LLMは清書のみ)。card-add は手動の補助。drill 会話は「ミス→その
+カードに戻れ」の診断に縮小 (SKILL.md "Recall drill & cards" / hard rule #2 参照)。
 
 All commands accept --vault PATH (default: $AI_WIKI_ROOT or ~/ai-wiki).
 """
@@ -31,6 +37,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import card_draft as mod_card_draft  # noqa: E402
+import cards as mod_cards  # noqa: E402
 import coverage_qa as mod_coverage_qa  # noqa: E402
 import ingest as mod_ingest  # noqa: E402
 import narrative as mod_narrative  # noqa: E402
@@ -150,6 +158,31 @@ def cmd_narrative_draft(argv: list[str]) -> dict:
         choices=["single", "chunked", "hierarchical"],
         default=None,
     )
+    p.add_argument(
+        "--mode",
+        choices=["auto", "peer"],
+        default="auto",
+        help="auto: one tree per source (size-based). peer: one independent "
+             "peer tree per major section, no master hub (for multi-section papers)",
+    )
+    p.add_argument(
+        "--faithfulness",
+        action="store_true",
+        help="after commit, judge each tree's claims against its source "
+             "(precision direction); flags unsupported claims + synthesized edges",
+    )
+    p.add_argument(
+        "--judge-model",
+        default=None,
+        help="model for the faithfulness judge (default: a different model from "
+             "the opus generator, to avoid self-preference bias)",
+    )
+    p.add_argument(
+        "--annotate-inferred",
+        action="store_true",
+        help="mark synthesized spine edges in-tree with [~] (implies "
+             "--faithfulness); idempotent, validates before rewriting",
+    )
     p.add_argument("--vault", default=None)
     args = p.parse_args(argv)
     vault = Vault(root=args.vault) if args.vault else Vault()
@@ -164,6 +197,10 @@ def cmd_narrative_draft(argv: list[str]) -> dict:
         max_iterations=args.max_iterations,
         dry_run=args.dry_run,
         force_strategy=args.force_strategy,
+        mode=args.mode,
+        run_faithfulness=args.faithfulness or args.annotate_inferred,
+        judge_model=args.judge_model,
+        annotate_inferred=args.annotate_inferred,
     )
 
 
@@ -234,8 +271,41 @@ def cmd_note_rewire(argv: list[str]) -> dict:
     )
 
 
+def cmd_card_add(argv: list[str]) -> dict:
+    p = argparse.ArgumentParser(prog="dispatcher.py card-add")
+    p.add_argument("--slug", required=True, help="narrative slug the card came from (deck file)")
+    p.add_argument("--front", required=True, help="cue: the question / description")
+    p.add_argument("--back", required=True, help="answer: the term / causal explanation")
+    p.add_argument("--vault", default=None)
+    args = p.parse_args(argv)
+    vault = Vault(root=args.vault) if args.vault else Vault()
+    return mod_cards.add_card(vault, slug=args.slug, front=args.front, back=args.back)
+
+
+def cmd_cards(argv: list[str]) -> dict:
+    p = argparse.ArgumentParser(prog="dispatcher.py cards")
+    p.add_argument("slug", nargs="?", default=None, help="deck to dump (default: all decks)")
+    p.add_argument("--vault", default=None)
+    args = p.parse_args(argv)
+    vault = Vault(root=args.vault) if args.vault else Vault()
+    return mod_cards.list_cards(vault, slug=args.slug)
+
+
+def cmd_card_draft(argv: list[str]) -> dict:
+    p = argparse.ArgumentParser(prog="dispatcher.py card-draft")
+    p.add_argument("slug", help="narrative slug to generate a deck for (symbol-walk)")
+    p.add_argument("--model", default=None, help="LLM model override (default: opus)")
+    p.add_argument("--vault", default=None)
+    args = p.parse_args(argv)
+    vault = Vault(root=args.vault) if args.vault else Vault()
+    return mod_card_draft.draft_cards(vault, args.slug, model=args.model)
+
+
 COMMANDS = {
     "ingest": cmd_ingest,
+    "card-add": cmd_card_add,
+    "card-draft": cmd_card_draft,
+    "cards": cmd_cards,
     "status": cmd_status,
     "lint": cmd_lint,
     "pillars": cmd_pillars,

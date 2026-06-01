@@ -65,11 +65,55 @@ async def test_pool_priority_ordering():
     assert rest.index("high-1") < rest.index("normal-1")
 
 
+@pytest.mark.asyncio
+async def test_pool_respects_dynamic_concurrency():
+    """Regression: AdaptiveRateController.current_concurrency must actually
+    bound the number of in-flight tasks. Before the fix, _worker used a
+    fixed asyncio.Semaphore(self._max) and current_concurrency was dead
+    code (computed but never applied). This test forces a tight limit and
+    asserts the pool honours it.
+    """
+    pool = WorkerPool(max_concurrency=8, latency_p95_threshold_ms=10_000_000)
+    await pool.start()
+    # Lock the rate controller so it cannot drift back up during the test:
+    # under very low latency `observe_and_adjust()` would auto-increment.
+    pool.rate.min_concurrency = 2
+    pool.rate.max_concurrency = 2
+    pool.rate.current_concurrency = 2
+
+    in_flight = 0
+    max_seen = 0
+    seen_lock = asyncio.Lock()
+
+    async def slow_task() -> int:
+        nonlocal in_flight, max_seen
+        async with seen_lock:
+            in_flight += 1
+            if in_flight > max_seen:
+                max_seen = in_flight
+        await asyncio.sleep(0.05)
+        async with seen_lock:
+            in_flight -= 1
+        return 1
+
+    try:
+        out = await gather_with_pool(
+            pool, [lambda: slow_task() for _ in range(20)]
+        )
+        assert sum(out) == 20
+        assert max_seen <= 2, (
+            f"current_concurrency=2 was set but {max_seen} tasks ran "
+            "concurrently; the semaphore-vs-condvar fix is not in effect"
+        )
+    finally:
+        await pool.close()
+
+
 def test_rate_controller_halves_under_pressure():
     c = AdaptiveRateController(max_concurrency=8, latency_p95_threshold_ms=100, window=20)
     for _ in range(20):
         c.record(200)
-    c.observe()
+    c.observe_and_adjust()
     assert c.current_concurrency <= 4
 
 
@@ -78,11 +122,11 @@ def test_rate_controller_recovers_under_calm():
     c.current_concurrency = 2
     for _ in range(20):
         c.record(100)
-    c.observe()
+    c.observe_and_adjust()
     assert c.current_concurrency == 3
 
 
 def test_rate_controller_warmup_keeps_concurrency():
     c = AdaptiveRateController(max_concurrency=4, latency_p95_threshold_ms=10, window=20)
     c.record(99999)
-    assert c.observe() == 4
+    assert c.observe_and_adjust() == 4  # warmup: no change

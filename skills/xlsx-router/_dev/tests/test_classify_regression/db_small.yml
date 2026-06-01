@@ -1,6 +1,6 @@
 all_docs_to_read:
 - p1_db_small.md
-docs_base_dir: ~/.claude/skills/xlsx/docs
+docs_base_dir: ~/.claude/skills/xlsx-router/docs
 extra_docs: []
 file: db_small.xlsx
 filename: db_small.xlsx
@@ -53,4 +53,6 @@ sheets:
   sheet_slug: orders
   size: small
   suggests_visual: false
+  transpose_confidence: -0.352
+  transposed: false
 workbook_slug: db_small

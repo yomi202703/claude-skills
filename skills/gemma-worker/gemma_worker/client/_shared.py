@@ -4,14 +4,19 @@ import json
 import re
 import time
 import uuid
+from contextvars import ContextVar
 from typing import Any
 
-_worker_context: dict[str, str | None] = {"trace_id": None, "task_id": None}
+# ContextVars so that concurrent supervisor.run() calls in the same process
+# do not stomp on each other's trace_id / task_id. Previously these lived in a
+# module-global dict which is not safe under asyncio task interleaving.
+_trace_id_var: ContextVar[str | None] = ContextVar("gemma_worker_trace_id", default=None)
+_task_id_var: ContextVar[str | None] = ContextVar("gemma_worker_task_id", default=None)
 
 
 def set_worker_context(*, trace_id: str | None, task_id: str | None) -> None:
-    _worker_context["trace_id"] = trace_id
-    _worker_context["task_id"] = task_id
+    _trace_id_var.set(trace_id)
+    _task_id_var.set(task_id)
 
 from openai import AsyncOpenAI
 from openai import APIConnectionError, APIError, APITimeoutError, RateLimitError
@@ -95,8 +100,8 @@ async def call_chat(
     text = ""
     tracer = trace.get_tracer("gemma-worker", "0.1.0")
     span_prompt = _flatten_messages_for_span(messages)
-    effective_worker_trace = worker_trace_id or _worker_context.get("trace_id")
-    effective_worker_task = worker_task_id or _worker_context.get("task_id")
+    effective_worker_trace = worker_trace_id or _trace_id_var.get()
+    effective_worker_task = worker_task_id or _task_id_var.get()
     async for attempt in AsyncRetrying(
         stop=stop_after_attempt(max_retries + 1),
         wait=wait_exponential(multiplier=1.0, min=1.0, max=8.0),
@@ -130,8 +135,20 @@ async def call_chat(
                                        json.dumps(["error"], ensure_ascii=False))
                     span.set_attribute("error", str(e)[:1024])
                     raise
-                text = (resp.choices[0].message.content or "").strip()
-                finish_reason = resp.choices[0].finish_reason or "stop"
+                # Defensive: some providers can return empty choices on
+                # content filtering or upstream errors. Treat as a retryable
+                # error rather than IndexError.
+                choices = getattr(resp, "choices", None) or []
+                if not choices:
+                    last_exc = APIError(
+                        message="empty choices in response",
+                        request=None,  # type: ignore[arg-type]
+                        body=None,
+                    )
+                    span.set_attribute("error", "empty_choices")
+                    raise last_exc
+                text = (choices[0].message.content or "").strip()
+                finish_reason = choices[0].finish_reason or "stop"
                 raw = {
                     "finish_reason": finish_reason,
                     "model": resp.model,

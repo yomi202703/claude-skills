@@ -1,6 +1,6 @@
 all_docs_to_read:
 - p2_db_large.md
-docs_base_dir: ~/.claude/skills/xlsx/docs
+docs_base_dir: ~/.claude/skills/xlsx-router/docs
 extra_docs: []
 file: db_large.xlsx
 filename: db_large.xlsx
@@ -58,4 +58,6 @@ sheets:
   sheet_slug: log
   size: large
   suggests_visual: false
+  transpose_confidence: 0.0
+  transposed: false
 workbook_slug: db_large

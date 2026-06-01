@@ -9,15 +9,15 @@ description: Efficient LLM-friendly xlsx processing. Uses a router script to cla
 
 1. **Classify**:
    ```bash
-   python3 ~/.claude/skills/xlsx/scripts/xlsx_classify.py <file.xlsx>
+   python3 ~/.claude/skills/xlsx-router/scripts/xlsx_classify.py <file.xlsx>
    ```
-   Output JSON lists `sheets[].path` (P1-P5), `sheets[].docs_to_read`, drawing signals (`has_drawings`, `shape_count`, `pic_count`, `suggests_visual`), plus workbook fields `all_docs_to_read`, `workbook_slug`, `output_dir_suggestion`, `multi_sheet`.
+   Output JSON lists `sheets[].path` (P1-P5), `sheets[].docs_to_read`, drawing signals (`has_drawings`, `shape_count`, `pic_count`, `suggests_visual`), a transposed-layout signal (`transposed`, `transpose_confidence` — when `transposed` is true the cell-based header is meaningless and `transposed.md` is added to `docs_to_read`), plus workbook fields `all_docs_to_read`, `workbook_slug`, `output_dir_suggestion`, `multi_sheet`.
 
-2. **Lazy-read docs**: read only files named in `all_docs_to_read` from `~/.claude/skills/xlsx/docs/`.
+2. **Lazy-read docs**: read only files named in `all_docs_to_read` from `~/.claude/skills/xlsx-router/docs/`.
 
 3. **Execute** each sheet's path as instructed by its doc. Write outputs under `<project>/data/<workbook_slug>/`.
 
-4. **Multi-sheet**: follow `multi_sheet.md`, write `_manifest.md` from `~/.claude/skills/xlsx/templates/manifest.md`.
+4. **Multi-sheet**: follow `multi_sheet.md`, write `_manifest.md` from `~/.claude/skills/xlsx-router/templates/manifest.md`.
 
 ## Processing hygiene
 

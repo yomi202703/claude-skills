@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import coverage_qa
+import faithfulness as faithfulness_mod
 import llm
 import narrative
 from vault import Page, Vault, slugify
@@ -140,6 +141,103 @@ def parse_markdown_structure(text: str) -> list[Section]:
     return root
 
 
+# Leading section number on a heading, with optional MinerU "■ " marker:
+# "3 Pre-training" / "■ 3.1.2 Data preprocessing" → captures "3" / "3.1.2".
+_NUM_PREFIX_RE = re.compile(r"^(?:■\s*)?(\d+(?:\.\d+)*)\s+")
+_MARKER_PREFIX_RE = re.compile(r"^■\s*")
+
+
+def _is_flat_numbered(headings: list[tuple[int, str]]) -> bool:
+    """Detect the converter pathology: a nested document collapsed so that
+    every heading sits at level-1 `#`.
+
+    Conservative on purpose — only true when there is more than one level-1
+    heading AND at least one of them carries a *dotted* section number (N.M),
+    which a well-formed source (single `#` title + `##` sections) never has.
+    """
+    level1 = [t for lvl, t in headings if lvl == 1]
+    if len(level1) <= 1:
+        return False
+    for t in level1:
+        m = _NUM_PREFIX_RE.match(t)
+        if m and "." in m.group(1):
+            return True
+    return False
+
+
+def normalize_heading_levels(text: str) -> tuple[str, bool]:
+    """Reconstruct heading hierarchy from section numbers when a converter
+    (e.g. MinerU) flattened every heading to level-1 `#`.
+
+    Numbered headings are re-leveled by their numbering depth (``N`` → ``##``,
+    ``N.M`` → ``###`` …); the first non-numbered heading becomes the document
+    ``#`` title and any later non-numbered heading (Abstract, References, …)
+    becomes a ``##`` chapter. The ``■`` marker MinerU prepends is stripped.
+
+    No-op (returns ``changed=False``) unless ``_is_flat_numbered`` fires, so
+    well-structured sources pass through untouched. Returns
+    ``(normalized_text, changed)``.
+    """
+    lines = text.splitlines()
+    parsed: list[tuple[int, int, str]] = []  # (line_idx, level, title)
+    for i, line in enumerate(lines):
+        m = _HEADER_RE.match(line)
+        if m:
+            parsed.append((i, len(m.group(1)), m.group(2).strip()))
+
+    if not _is_flat_numbered([(lvl, t) for _, lvl, t in parsed]):
+        return text, False
+
+    title_done = False
+    for idx, _lvl, raw in parsed:
+        clean = _MARKER_PREFIX_RE.sub("", raw).strip()
+        nm = _NUM_PREFIX_RE.match(raw)
+        if nm:
+            depth = nm.group(1).count(".") + 1   # 1 → major, 2 → sub, …
+            lines[idx] = "#" * (depth + 1) + " " + clean  # major → ##
+        elif not title_done:
+            lines[idx] = "# " + clean                      # document title
+            title_done = True
+        else:
+            lines[idx] = "## " + clean                     # Abstract / References / …
+
+    out = "\n".join(lines)
+    if text.endswith("\n"):
+        out += "\n"
+    return out, True
+
+
+# Non-content trailing sections (bibliography / front-matter boilerplate) that
+# should never become a narrative tree. Matched against a heading title with
+# any leading section number / ■ marker stripped, case-insensitively.
+_BACK_MATTER_RE = re.compile(
+    r"^\s*(?:■\s*)?(?:\d+(?:\.\d+)*\s+)?"
+    r"(?:references?|bibliography|acknowledge?ments?|competing\s+interests?|"
+    r"conflicts?\s+of\s+interest|open\s+access|funding|author\s+contributions?|"
+    r"declarations?|supplementary(?:\s+material)?|参考文献|謝辞|利益相反)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _is_back_matter(title: str | None) -> bool:
+    return bool(_BACK_MATTER_RE.match(title or ""))
+
+
+def _strip_back_matter(sections: list[Section]) -> list[Section]:
+    """Recursively drop non-content sections (References, Acknowledgements,
+    Open Access, …) so they never become trees or contaminate a content tree
+    via the tiny-section merge in ``_extract_section_plan``.
+    """
+    out: list[Section] = []
+    for s in sections:
+        if _is_back_matter(s.title):
+            continue
+        if s.children:
+            s.children = _strip_back_matter(s.children)
+        out.append(s)
+    return out
+
+
 def select_strategy(total_tokens: int) -> str:
     if total_tokens < THRESHOLD_SINGLE_TOKENS:
         return "single"
@@ -200,6 +298,53 @@ def _cove_verify(vault: Vault, slug: str, draft_body: str) -> tuple[str, float, 
 
 # ---------- validation + commit ----------
 
+# Telltale fragments of LLM self-commentary that occasionally leak into the
+# body (e.g. CoVe returning its reasoning instead of only the corrected
+# tree). Matched case-insensitively against the text preceding the first
+# structural heading.
+_META_LEAK_SIGNATURES = (
+    # English verifier leak fragments
+    "no_fixes", "no_corrections", "returning the", "corrected body",
+    "remediated body", "stray line", "stray non-content",
+    "violates the output", "checks out against", "out-of-dictionary",
+    "principles + dictionary",
+    # Japanese verifier leak fragments (CoVe returns its reasoning in JP, e.g.
+    # 「検証しました。…違反が 2 点あります: 1. … に修正」). lower() leaves
+    # Japanese untouched, so these match as-is.
+    "検証しました", "違反が", "違反は", "違反点", "修正版", "修正後",
+    "に修正", "辞書外", "の欠落", "修正しました",
+    # Master/section generators sometimes announce the body before emitting it,
+    # e.g. 「以下が master narrative の本文です（…）」. A legitimate short intro
+    # never talks *about* the body, so these announcement markers are safe.
+    "本文です", "本文を出力", "を出力します", "narrative の本文",
+)
+
+# First real structural heading line (`## ROOT` or `## 記法`) — line-anchored so
+# an inline ``## ROOT`` quoted inside leaked prose is not mistaken for the header.
+_STRUCT_HEADER_RE = re.compile(r"^##\s+(?:ROOT|記法)\s*$", re.MULTILINE)
+
+
+def _strip_meta_preamble(body: str) -> tuple[str, bool]:
+    """Drop leaked LLM meta-commentary that precedes the narrative tree.
+
+    A legitimate preamble (if present) is a short Japanese intro paragraph.
+    If the text before the first ``## 記法``/``## ROOT`` heading carries any
+    meta-leak signature, the whole preamble is discarded — a leaked intro is
+    not recoverable, and losing it is less harmful than shipping commentary
+    into the vault. Returns ``(clean_body, changed)``.
+    """
+    # Anchor on a real heading *line* (`^## ROOT` / `^## 記法`), not an inline
+    # mention — CoVe's leaked commentary often quotes "`## ROOT`" inside its
+    # prose, and a substring search would cut there, mid-sentence.
+    m = _STRUCT_HEADER_RE.search(body)
+    if m is None:
+        return body, False
+    idx = m.start()
+    preamble = body[:idx].lower()
+    if any(sig in preamble for sig in _META_LEAK_SIGNATURES):
+        return body[idx:].lstrip("\n"), True
+    return body, False
+
 
 def _validate_and_commit(
     vault: Vault,
@@ -209,12 +354,14 @@ def _validate_and_commit(
 ) -> tuple[bool, list[str], list[str]]:
     """Wrap body as narrative Page, validate, write if clean. Returns
     (committed, errors, warnings)."""
+    body, stripped = _strip_meta_preamble(body)
+    extra = ["stripped leaked meta-commentary preamble from body"] if stripped else []
     page = _wrap_as_narrative(body, slug, title)
     report = narrative.validate_page(page)
     if report.errors:
-        return False, report.errors, report.warnings
+        return False, report.errors, extra + report.warnings
     vault.write(page)
-    return True, [], report.warnings
+    return True, [], extra + report.warnings
 
 
 # ---------- single-shot ----------
@@ -330,6 +477,21 @@ def _sub_slug(master_slug: str, section: Section, index: int) -> str:
     return f"{master_slug}-{title_slug}"[:80]
 
 
+def _peer_slug(base_slug: str, section: Section, index: int) -> str:
+    """Slug for a peer tree: ``<base>-NN-<title-without-leading-number>``.
+
+    The leading section number (if any) becomes a zero-padded ordering prefix
+    so the forest index sorts naturally; it is stripped from the title slug to
+    avoid a doubled number (``3 Pre-training`` → ``...-03-pre-training``).
+    """
+    title = section.title or ""
+    nm = re.match(r"^\s*(\d+)", title)
+    num = f"{int(nm.group(1)):02d}" if nm else f"{index + 1:02d}"
+    title_wo_num = re.sub(r"^\s*\d+(?:\.\d+)*\s*", "", title)
+    title_slug = slugify(title_wo_num) if title_wo_num.strip() else f"section-{index}"
+    return f"{base_slug}-{num}-{title_slug}"[:80]
+
+
 def _generate_hierarchical(
     vault: Vault,
     master_slug: str,
@@ -438,6 +600,58 @@ def _generate_hierarchical(
                 "stage": "master_gen",
                 "error": master_gen.error_message or "empty",
             })
+
+    return written, total_cost, errors, warnings, coverage_reports
+
+
+# ---------- peer-split ----------
+
+
+def _generate_peer(
+    vault: Vault,
+    base_slug: str,
+    master_title: str,
+    sections: list[Section],
+    use_cove: bool,
+    *,
+    run_coverage_iterate: bool = True,
+    coverage_threshold: float = 0.95,
+    max_iterations: int = 3,
+) -> tuple[list[str], float, list[dict], list[str], list[dict]]:
+    """Generate one independent *peer* tree per major section — no master hub.
+
+    Each section is a self-contained `single`-strategy narrative (the proven
+    path), connected to the rest only through `[[slug]]` wikilinks in the
+    forest. This suits broad multi-section sources (e.g. survey papers) where
+    the chapters are separate topics rather than one shared problem-spine.
+
+    Returns (written_slugs, cost, errors, warnings, coverage_reports).
+    """
+    plan = _extract_section_plan(sections)
+    written: list[str] = []
+    total_cost = 0.0
+    errors: list[dict] = []
+    warnings: list[str] = []
+    coverage_reports: list[dict] = []
+
+    for i, section in enumerate(plan):
+        peer_slug = _peer_slug(base_slug, section, i)
+        peer_title = section.title or f"{master_title} 章 {i + 1}"
+        section_source = section.render()
+        slug_out, cost, errs, warns, cov = _generate_single(
+            vault, peer_slug, peer_title, section_source, use_cove,
+            run_coverage_iterate=run_coverage_iterate,
+            coverage_threshold=coverage_threshold,
+            max_iterations=max_iterations,
+        )
+        total_cost += cost
+        warnings.extend([f"{peer_slug}: {w}" for w in warns])
+        if slug_out:
+            written.append(slug_out)
+        else:
+            errors.append({"slug": peer_slug, "stage": "peer", "errors": errs})
+        if cov is not None:
+            coverage_reports.append({"slug": peer_slug, **cov})
 
     return written, total_cost, errors, warnings, coverage_reports
 
@@ -596,15 +810,20 @@ def narrative_draft(
     use_cove: bool = True,
     dry_run: bool = False,
     force_strategy: str | None = None,
+    mode: str = "auto",
     run_coverage: bool = True,
     coverage_threshold: float = 0.95,
     max_iterations: int = 3,
+    run_faithfulness: bool = False,
+    judge_model: str | None = None,
+    annotate_inferred: bool = False,
 ) -> dict:
     """Generate a narrative tree from a markdown source.
 
-    Strict 1 source = 1 tree (REQUIREMENTS §14.1.1 / SPEC §13.4.1). Cross-source
-    merge (former mode C) is removed — write a peer tree and let wikilinks
-    connect shared concepts.
+    Strict 1 source = 1 tree (REQUIREMENTS §14.1.1 / SPEC §13.4.1) in ``auto``
+    mode. ``peer`` mode is the deliberate exception for broad multi-section
+    sources (survey papers): it emits one independent peer tree per major
+    section instead, connected only by `[[slug]]` wikilinks.
 
     Parameters
     ----------
@@ -619,12 +838,26 @@ def narrative_draft(
     dry_run
         Parse + classify but make no LLM calls, no file writes.
     force_strategy
-        "single" | "chunked" | "hierarchical", override auto-selection.
+        "single" | "chunked" | "hierarchical", override auto-selection
+        (ignored when ``mode='peer'``).
+    mode
+        "auto" (default): size-based single/chunked/hierarchical, one tree per
+        source. "peer": one independent peer tree per major section, no master
+        hub — for multi-section papers whose chapters are separate topics.
     run_coverage
         After successful commit, run QuestEval-style coverage per sub narrative
         (hierarchical) or on the single narrative (single/chunked). Master
         narrative is excluded from coverage (it's a navigation hub without
         content-level claims). Gap reports written to `~/ai-wiki/.narrative-gaps/`.
+    run_faithfulness
+        After commit, run the precision-direction check: each tree's atomic
+        claims are judged against its own source (diagnostic only, never
+        mutates the tree). Surfaces unsupported claims and synthesized edges
+        under `~/ai-wiki/.narrative-faithfulness/`.
+    judge_model
+        Model for the faithfulness judge. Defaults to a *different* model from
+        the opus generator (faithfulness.DEFAULT_JUDGE_MODEL) to dodge
+        LLM-as-judge self-preference bias.
     """
     path = Path(source_path).expanduser()
     if not path.exists():
@@ -641,25 +874,37 @@ def narrative_draft(
         ).to_dict()
 
     text = path.read_text(encoding="utf-8")
-    sections = parse_markdown_structure(text)
+    # Reconstruct heading hierarchy if a converter flattened everything to `#`
+    # (e.g. MinerU PDF output). No-op for well-structured sources.
+    text, heading_normalized = normalize_heading_levels(text)
     total_tokens = estimate_tokens(text)
+    # Drop bibliography / boilerplate so it never becomes (or contaminates) a
+    # tree. total_tokens is measured first so strategy thresholds see full size.
+    sections = _strip_back_matter(parse_markdown_structure(text))
 
     base_slug = slug or slugify(path.stem)
     derived_title = title or _derive_title(text, fallback=path.stem)
-    strategy = force_strategy or select_strategy(total_tokens)
+    strategy = "peer" if mode == "peer" else (force_strategy or select_strategy(total_tokens))
 
     # Slug conflict check (SPEC §13.4.1, 1 source = 1 tree invariant).
     # narrative-draft creates NEW narratives; overwriting an existing slug
     # silently would violate REQUIREMENTS §14.1.1. User must explicitly
     # delete or pick another slug.
     conflict_slugs: list[str] = []
-    if vault.exists("narrative", base_slug):
-        conflict_slugs.append(base_slug)
-    if strategy == "hierarchical":
+    if strategy == "peer":
+        # Peer mode never writes base_slug itself — only the per-section peers.
         for i, section in enumerate(_extract_section_plan(sections)):
-            sub = _sub_slug(base_slug, section, i)
-            if vault.exists("narrative", sub):
-                conflict_slugs.append(sub)
+            ps = _peer_slug(base_slug, section, i)
+            if vault.exists("narrative", ps):
+                conflict_slugs.append(ps)
+    else:
+        if vault.exists("narrative", base_slug):
+            conflict_slugs.append(base_slug)
+        if strategy == "hierarchical":
+            for i, section in enumerate(_extract_section_plan(sections)):
+                sub = _sub_slug(base_slug, section, i)
+                if vault.exists("narrative", sub):
+                    conflict_slugs.append(sub)
     if conflict_slugs:
         return DraftReport(
             vault_root=str(vault.root),
@@ -677,6 +922,20 @@ def narrative_draft(
             }],
         ).to_dict()
 
+    # Map each slug that will be written to the source slice it was generated
+    # from, so the post-commit faithfulness check can judge each tree against
+    # its own source (not the whole document). Master hubs are intentionally
+    # absent (no content-level claims to verify).
+    slug_to_source: dict[str, str] = {}
+    if strategy == "peer":
+        for i, section in enumerate(_extract_section_plan(sections)):
+            slug_to_source[_peer_slug(base_slug, section, i)] = section.render()
+    elif strategy == "hierarchical":
+        for i, section in enumerate(_extract_section_plan(sections)):
+            slug_to_source[_sub_slug(base_slug, section, i)] = section.render()
+    else:  # single / chunked / fallback all generate one tree from full text
+        slug_to_source[base_slug] = text
+
     report = DraftReport(
         vault_root=str(vault.root),
         source_path=str(path),
@@ -688,13 +947,36 @@ def narrative_draft(
         total_cost_usd=0.0,
     )
 
+    if heading_normalized:
+        report.warnings.append(
+            "reconstructed heading hierarchy from section numbers "
+            "(source had flattened level-1 headings)"
+        )
+
     if dry_run:
         report.warnings.append("dry_run: no LLM calls, no file writes")
         return report.to_dict()
 
     coverage_reports: list[dict] = []
 
-    if strategy == "single":
+    if strategy == "peer":
+        written, cost, errors, warnings, covs = _generate_peer(
+            vault,
+            base_slug,
+            derived_title,
+            sections,
+            use_cove,
+            run_coverage_iterate=run_coverage,
+            coverage_threshold=coverage_threshold,
+            max_iterations=max_iterations,
+        )
+        report.total_cost_usd = cost
+        report.narratives_written.extend(written)
+        report.errors.extend(errors)
+        report.warnings.extend(warnings)
+        coverage_reports.extend(covs)
+
+    elif strategy == "single":
         # Use full text (incl. headers) as source
         slug_out, cost, errs, warnings, cov = _generate_single(
             vault, base_slug, derived_title, text, use_cove,
@@ -730,6 +1012,33 @@ def narrative_draft(
         if cov is not None:
             coverage_reports.append({"slug": base_slug, **cov})
 
+    elif not _extract_section_plan(sections):
+        # Hierarchical was selected (or forced) but the source has no usable
+        # level-2 section boundaries — e.g. a converter (MinerU) flattened every
+        # heading to a single `#` level. _generate_hierarchical would silently
+        # write zero narratives, so fall back to a single chunked call over the
+        # whole text rather than returning an empty, error-free no-op.
+        report.strategy = "chunked"
+        report.warnings.append(
+            "hierarchical strategy found no level-2 (##) section boundaries; "
+            "falling back to chunked single-call generation"
+        )
+        concat = _concat_sections_for_chunked(sections)
+        slug_out, cost, errs, warnings, cov = _generate_single(
+            vault, base_slug, derived_title, concat, use_cove,
+            run_coverage_iterate=run_coverage,
+            coverage_threshold=coverage_threshold,
+            max_iterations=max_iterations,
+        )
+        report.total_cost_usd = cost
+        report.warnings.extend(warnings)
+        if slug_out:
+            report.narratives_written.append(slug_out)
+        else:
+            report.errors.append({"slug": base_slug, "stage": "chunked-fallback", "errors": errs})
+        if cov is not None:
+            coverage_reports.append({"slug": base_slug, **cov})
+
     else:  # hierarchical
         master_root_hint = derived_title
         written, cost, errors, warnings, covs = _generate_hierarchical(
@@ -749,17 +1058,75 @@ def narrative_draft(
         report.warnings.extend(warnings)
         coverage_reports.extend(covs)
 
+    # --- Faithfulness pass (precision direction; opt-in) ---
+    # Diagnostic only: judges each committed tree's atomic claims against its
+    # own source, with a different judge model to dodge self-preference bias.
+    # Never mutates the tree. Surfaces unsupported claims + synthesized edges.
+    faithfulness_reports: list[dict] = []
+    if run_faithfulness:
+        jm = judge_model or faithfulness_mod.DEFAULT_JUDGE_MODEL
+        for written_slug in report.narratives_written:
+            src = slug_to_source.get(written_slug)
+            if not src:
+                continue  # e.g. master hub — no content claims to verify
+            committed = vault.read("narrative", written_slug)
+            if committed is None:
+                continue
+            fr = faithfulness_mod.run(
+                vault, written_slug, committed.body, src, judge_model=jm,
+            )
+            report.total_cost_usd += fr.get("cost_usd", 0.0)
+            faithfulness_reports.append(fr)
+            if fr.get("unsupported", 0):
+                # Real hallucination signal — loud.
+                report.warnings.append(
+                    f"{written_slug}: fact precision {fr.get('fact_faithfulness_pct', 0):.0f}% — "
+                    f"{fr.get('unsupported', 0)} unsupported claim(s), verify "
+                    f"(see {fr.get('report_path', '')})"
+                )
+            elif fr.get("edge_source_silent", 0):
+                # Synthesized spine edges are expected for problem-driven trees;
+                # informational, not an alarm.
+                report.warnings.append(
+                    f"{written_slug}: {fr.get('edge_source_silent', 0)} synthesized spine "
+                    f"edge(s) (interpretive — verify against source; "
+                    f"see {fr.get('report_path', '')})"
+                )
+            # Optionally mark synthesized edges in-tree with [~] (idempotent).
+            if annotate_inferred:
+                new_body, n_marked = faithfulness_mod.annotate_inferred(
+                    committed.body, fr.get("items", []),
+                )
+                if n_marked:
+                    annotated = Page(
+                        kind="narrative", slug=written_slug,
+                        meta={**committed.meta, "updated": date.today().isoformat()},
+                        body=new_body,
+                    )
+                    val = narrative.validate_page(annotated)
+                    if val.errors:
+                        report.warnings.append(
+                            f"{written_slug}: [~] annotation skipped (validation: {val.errors})"
+                        )
+                    else:
+                        vault.write(annotated)
+                        report.warnings.append(
+                            f"{written_slug}: marked {n_marked} synthesized edge(s) with [~]"
+                        )
+
     vault.append_log(
         "narrative_draft",
         {
             "slug": base_slug,
-            "strategy": strategy,
+            "strategy": report.strategy,
             "written": len(report.narratives_written),
             "cost_usd": f"{report.total_cost_usd:.4f}",
             "errors": len(report.errors),
             "coverage_runs": len(coverage_reports),
+            "faithfulness_runs": len(faithfulness_reports),
         },
     )
     out = report.to_dict()
     out["coverage"] = coverage_reports
+    out["faithfulness"] = faithfulness_reports
     return out

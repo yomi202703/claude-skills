@@ -1,5 +1,5 @@
 #!/bin/bash
-# PostToolUse hook: run xlsx skill harness when any file under ~/.claude/skills/xlsx/ is edited.
+# PostToolUse hook: run xlsx skill harness when any file under ~/.claude/skills/xlsx-router/ is edited.
 # Hook receives tool-call JSON on stdin; we check tool_input.file_path.
 
 INPUT=$(cat)
@@ -12,13 +12,13 @@ except Exception:
 
 # Only act when the edited file is inside the xlsx skill
 case "$FILE" in
-  *".claude/skills/xlsx/"*)
+  *".claude/skills/xlsx-router/"*)
     # Skip if the edit is itself a harness artifact (history, test baselines, backups)
     case "$FILE" in
       *"/_dev/history/"*|*.bak.*|*"/tests/test_classify_regression/"*) exit 0 ;;
     esac
     export PATH="$HOME/.local/bin:$PATH"
-    OUT=$(cd "$HOME/.claude/skills/xlsx/_dev" && pytest tests/ -q --no-header 2>&1)
+    OUT=$(cd "$HOME/.claude/skills/xlsx-router/_dev" && pytest tests/ -q --no-header 2>&1)
     STATUS=$?
     if [ $STATUS -ne 0 ]; then
       # Print to stderr so Claude sees the regression

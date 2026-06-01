@@ -33,13 +33,21 @@ class SQLiteSpanExporter(SpanExporter):
                 db.execute("PRAGMA journal_mode=WAL")
                 for sp in spans:
                     attrs = dict(sp.attributes or {})
+                    otel_trace_hex = format(sp.context.trace_id, "032x")
+                    # Prefer the supervisor-supplied worker trace_id as the
+                    # primary `trace_id` column (Store.list_spans looks it up
+                    # by that). Always preserve the OTel trace_id in
+                    # `otel_trace_id` so the upstream hierarchy is not lost.
+                    worker_trace = attrs.get("gemma_worker.trace_id")
+                    row_trace_id = str(worker_trace) if worker_trace else otel_trace_hex
                     db.execute(
                         "INSERT OR REPLACE INTO spans"
-                        "(span_id, trace_id, parent_span_id, name, started_at, ended_at, attributes_json, status) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        "(span_id, trace_id, otel_trace_id, parent_span_id, name, started_at, ended_at, attributes_json, status) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (
                             format(sp.context.span_id, "016x"),
-                            format(sp.context.trace_id, "032x"),
+                            row_trace_id,
+                            otel_trace_hex,
                             format(sp.parent.span_id, "016x") if sp.parent else None,
                             sp.name,
                             sp.start_time / 1e9 if sp.start_time else 0.0,

@@ -1,7 +1,7 @@
 all_docs_to_read:
 - merges.md
 - p3_structured_small.md
-docs_base_dir: ~/.claude/skills/xlsx/docs
+docs_base_dir: ~/.claude/skills/xlsx-router/docs
 extra_docs: []
 file: 法人契約チェックシート_202507.xlsx
 filename: 法人契約チェックシート_202507.xlsx
@@ -61,4 +61,6 @@ sheets:
   sheet_slug: 法人契約チェックシート_202507
   size: small
   suggests_visual: false
+  transpose_confidence: 0.024
+  transposed: false
 workbook_slug: 法人契約チェックシート_202507

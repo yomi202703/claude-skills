@@ -20,7 +20,14 @@ CREATE TABLE IF NOT EXISTS retry_state (
 
 CREATE TABLE IF NOT EXISTS spans (
   span_id TEXT PRIMARY KEY,
+  -- The gemma-worker supervisor trace_id (uuid hex) by which spans are
+  -- looked up. When no worker context is attached, this falls back to the
+  -- OTel-generated trace_id so the span is still queryable.
   trace_id TEXT NOT NULL,
+  -- The original OTel-generated 128-bit trace_id (032x hex). Preserved
+  -- separately so the OTel hierarchy/correlation is not lost when the
+  -- primary trace_id is overridden by the worker context.
+  otel_trace_id TEXT,
   parent_span_id TEXT,
   name TEXT NOT NULL,
   started_at REAL NOT NULL,

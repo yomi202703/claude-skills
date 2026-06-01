@@ -43,4 +43,34 @@ Master ROOT (context reference): `{{master_root}}`
 - 章外参照が必要な概念は `[⤴]` で借用元を示す (本文は書かない)
 - 最後に `## 未配送` を付ける
 
-frontmatter 不要、intro から `## 未配送` までの markdown 本文を出力。
+### 構造 (この skeleton を厳守)
+
+```
+(intro paragraph)
+
+## 記法
+
+(辞書、そのまま貼る)
+
+## ROOT
+
+(box-drawing code block with [?] この章の sub-problem)
+
+## 1. <サブ問題のタイトル>
+
+(code block with tree)
+
+⟳ **だから次の問題**: ...
+
+## 2. ...
+
+## 未配送 (optional)
+```
+
+- **トップの構造見出しは必ず `## 記法` → `## ROOT` の順**。ソース章の見出し
+  (例: `## 1 Introduction`、`## 3.2 Architecture`、英語ソースなら英語の章題) を
+  **トップ見出しにそのまま使わない**。章題は ROOT 問題文や `## 1. <タイトル>`
+  の中で言及するだけにする。
+- `## ROOT` / `## 記法` という**リテラルな見出し行**が本文に存在しない出力は不正。
+- frontmatter 不要。intro から `## 未配送` までの markdown 本文のみを出力
+  (検証コメント・前置き説明など本文以外のテキストを一切含めない)。

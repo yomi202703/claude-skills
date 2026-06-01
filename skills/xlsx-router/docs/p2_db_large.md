@@ -5,7 +5,7 @@ Convert to SQLite, report only schema + row count + 5-row sample.
 ## Command
 
 ```bash
-python3 ~/.claude/skills/xlsx/scripts/xlsx_materialize.py <file.xlsx> \
+python3 ~/.claude/skills/xlsx-router/scripts/xlsx_materialize.py <file.xlsx> \
   --out <output_dir>/<sheet_slug>.sqlite --tables "<sheet_name>"
 ```
 
