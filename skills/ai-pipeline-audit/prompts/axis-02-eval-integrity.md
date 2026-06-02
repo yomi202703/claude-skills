@@ -15,6 +15,11 @@ Is the evaluation setup contaminated, observer-aware, or biased in a way that co
   - Length / verbosity preference: judge instructions that favor longer or more elaborate answers regardless of quality.
   - Style coupling: judge that prefers a specific format, letting format dominate over content.
   - Self-preference: judge and evaluatee from the same model family.
+- Reward-hackable scoring: the eval structure rewards passing the check rather than doing the task, so a shortcut can satisfy it:
+  - the executor can reach the grader, reference answers, or scoring code at run time;
+  - the success check is satisfiable by an equality/format trick (e.g. overloadable comparison, a constant-returning stub) rather than by correct work;
+  - the metric rewards length or surface form with no normalization;
+  - the pass criterion depends on a manipulable signal (self-reported timing, self-graded success) instead of an independent oracle.
 
 ## What constitutes acceptable design
 
@@ -32,9 +37,10 @@ For each target:
    - length-favoring language present? yes / no
    - style-favoring language present? yes / no
    - judge and evaluatee share a model family? yes / no
-5. Flag every positive mark from steps 1-4 with the corresponding category.
+5. Trace how success is scored. Record whether the grader / reference / scoring code is reachable by the executor at run time, whether the check is satisfiable by an equality-or-format trick rather than correct work, whether the metric rewards length or surface form unnormalized, and whether the pass criterion rests on a manipulable self-reported signal instead of an independent oracle.
+6. Flag every positive mark from steps 1-5 with the corresponding category.
 
-Inspection is complete when steps 1-5 have each been performed once per target.
+Inspection is complete when steps 1-6 have each been performed once per target.
 
 ## Output
 

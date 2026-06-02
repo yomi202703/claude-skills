@@ -27,6 +27,11 @@ from vault import Vault
 QA_DIR_NAME = ".narrative-qa"
 GAPS_DIR_NAME = ".narrative-gaps"
 
+# Coverage is judged by a *different* model from the opus generator, to dodge
+# self-preference bias / in-context reward hacking when a model grades text it
+# wrote itself (arxiv 2407.04549, 2506.02592). Mirrors faithfulness.DEFAULT_JUDGE_MODEL.
+DEFAULT_JUDGE_MODEL = "sonnet"
+
 
 @dataclass
 class QAItem:
@@ -56,6 +61,11 @@ class CoverageReport:
     cost_usd: float = 0.0
     qa_set_path: str = ""
     gap_report_path: str = ""
+    # Hold-out: coverage measured on a fresh, independent QA set the fixer never
+    # saw. This is the *honest* number; coverage_pct is the optimized one.
+    holdout_coverage_pct: float | None = None
+    holdout_total: int = 0
+    holdout_covered: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -65,6 +75,9 @@ class CoverageReport:
             "partial": self.partial,
             "missing": self.missing,
             "coverage_pct": self.coverage_pct,
+            "holdout_coverage_pct": self.holdout_coverage_pct,
+            "holdout_total": self.holdout_total,
+            "holdout_covered": self.holdout_covered,
             "cost_usd": round(self.cost_usd, 4),
             "qa_set_path": self.qa_set_path,
             "gap_report_path": self.gap_report_path,
@@ -87,8 +100,11 @@ def _gaps_dir(vault: Vault) -> Path:
     return d
 
 
-def qa_set_path(vault: Vault, slug: str) -> Path:
-    return _qa_dir(vault) / f"{slug}.json"
+def qa_set_path(vault: Vault, slug: str, holdout: bool = False) -> Path:
+    # holdout set = an independent QA draw used only to *measure* final coverage,
+    # never to drive fixes — defeats teaching-to-the-test (arxiv 2311.01964).
+    suffix = ".holdout.json" if holdout else ".json"
+    return _qa_dir(vault) / f"{slug}{suffix}"
 
 
 def gap_report_path(vault: Vault, slug: str) -> Path:
@@ -121,8 +137,8 @@ def generate_qa_set(vault: Vault, slug: str, title: str, source_text: str) -> tu
     return out, result.cost_usd
 
 
-def save_qa_set(vault: Vault, slug: str, items: list[QAItem]) -> Path:
-    path = qa_set_path(vault, slug)
+def save_qa_set(vault: Vault, slug: str, items: list[QAItem], holdout: bool = False) -> Path:
+    path = qa_set_path(vault, slug, holdout=holdout)
     payload = {
         "slug": slug,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -133,8 +149,8 @@ def save_qa_set(vault: Vault, slug: str, items: list[QAItem]) -> Path:
     return path
 
 
-def load_qa_set(vault: Vault, slug: str) -> list[QAItem]:
-    path = qa_set_path(vault, slug)
+def load_qa_set(vault: Vault, slug: str, holdout: bool = False) -> list[QAItem]:
+    path = qa_set_path(vault, slug, holdout=holdout)
     if not path.exists():
         return []
     try:
@@ -152,15 +168,18 @@ def check_coverage(
     slug: str,
     narrative_body: str,
     qa_items: list[QAItem],
+    judge_model: str = DEFAULT_JUDGE_MODEL,
 ) -> tuple[list[CoverageStatus], float]:
     """Ask Claude to judge each QA against the narrative. Returns
-    (statuses_in_input_order, cost)."""
+    (statuses_in_input_order, cost). The judge runs on a *different* model from
+    the opus generator (default sonnet) to avoid self-preference bias."""
     if not qa_items:
         return [], 0.0
     qa_json = json.dumps([x.to_dict() for x in qa_items], ensure_ascii=False, indent=2)
     result = llm.call_with_template(
         "coverage_qa_check",
         {"slug": slug, "narrative_body": narrative_body, "qa_items_json": qa_json},
+        model=judge_model,
     )
     llm.log_call(vault.append_log, "coverage_qa_check", slug, result)
     if result.is_error or not isinstance(result.parsed, list):
@@ -246,6 +265,7 @@ def run_coverage(
     source_path: str | Path | None,
     *,
     regenerate_qa: bool = False,
+    judge_model: str = DEFAULT_JUDGE_MODEL,
 ) -> dict:
     """Full coverage workflow for a narrative.
 
@@ -286,7 +306,9 @@ def run_coverage(
         save_qa_set(vault, slug, qa_items)
 
     # --- Step 2: coverage check ---
-    statuses, check_cost = check_coverage(vault, slug, narrative_page.body, qa_items)
+    statuses, check_cost = check_coverage(
+        vault, slug, narrative_page.body, qa_items, judge_model=judge_model
+    )
 
     # --- Step 3: aggregate + write gap report ---
     covered = sum(1 for s in statuses if s.status == "covered")
@@ -393,6 +415,8 @@ def iterate_and_fix(
     *,
     coverage_threshold: float = 0.95,
     max_iterations: int = 3,
+    judge_model: str = DEFAULT_JUDGE_MODEL,
+    holdout: bool = True,
 ) -> IterateResult:
     """Iterate QuestEval remediation until coverage ≥ threshold or max_iterations.
 
@@ -438,7 +462,7 @@ def iterate_and_fix(
 
     for i in range(max_iterations):
         iterations_run = i + 1
-        statuses, check_cost = check_coverage(vault, slug, body, qa_items)
+        statuses, check_cost = check_coverage(vault, slug, body, qa_items, judge_model=judge_model)
         total_cost += check_cost
         covered = sum(1 for s in statuses if s.status == "covered")
         total = len(statuses)
@@ -472,6 +496,35 @@ def iterate_and_fix(
         qa_set_path=str(qa_set_path(vault, slug).relative_to(vault.root)),
     )
 
+    # --- Hold-out validation (anti teaching-to-the-test) ---
+    # Measure the *final* body against an independent QA set the fixer never
+    # optimized against. coverage_pct above is the in-sample (optimistic) number;
+    # holdout_coverage_pct is the honest out-of-sample one. Measurement only —
+    # we never fix against the hold-out set.
+    if holdout:
+        ho_items = load_qa_set(vault, slug, holdout=True)
+        if not ho_items:
+            ho_items, ho_gen_cost = generate_qa_set(vault, slug, title, source_text)
+            total_cost += ho_gen_cost
+            if ho_items:
+                save_qa_set(vault, slug, ho_items, holdout=True)
+        if ho_items:
+            ho_statuses, ho_check_cost = check_coverage(
+                vault, slug, body, ho_items, judge_model=judge_model
+            )
+            total_cost += ho_check_cost
+            ho_covered = sum(1 for s in ho_statuses if s.status == "covered")
+            ho_total = len(ho_statuses)
+            final_report.holdout_total = ho_total
+            final_report.holdout_covered = ho_covered
+            final_report.holdout_coverage_pct = (
+                round(ho_covered / ho_total * 100.0, 1) if ho_total else 0.0
+            )
+
+    # Keep the report's cost in lockstep with the returned IterateResult.cost_usd
+    # across every path (holdout off / on / gen-failed), so the two never diverge.
+    final_report.cost_usd = total_cost
+
     # Persist gap report even for converged case (shows what's left)
     gap_path = write_gap_report(vault, slug, final_report)
     final_report.gap_report_path = str(gap_path.relative_to(vault.root))
@@ -483,6 +536,10 @@ def iterate_and_fix(
             "iterations": iterations_run,
             "converged": "yes" if converged else "no",
             "coverage_pct": f"{final_report.coverage_pct:.1f}",
+            "holdout_pct": (
+                f"{final_report.holdout_coverage_pct:.1f}"
+                if final_report.holdout_coverage_pct is not None else "n/a"
+            ),
             "cost_usd": f"{total_cost:.4f}",
         },
     )

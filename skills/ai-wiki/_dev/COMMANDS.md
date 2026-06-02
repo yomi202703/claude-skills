@@ -22,18 +22,6 @@ Split a bloating narrative into a sibling tree at the named H2 boundary. Use whe
 ## `coverage-narrative <slug> --source <md>`
 QuestEval-style gap report against a source markdown. Auto-runs inside `narrative-draft`; standalone invocation only needed when re-checking an already-drafted narrative against a revised source.
 
-## `note-from-chat <export.md> --study <slug> [--apply-anchor]`
-Claude desktop/web chat export → `notes/<slug>.md` with frontmatter `study:`. Heuristic detects chat-export shape (UI markers, broken LaTeX); use `--no-detect-check` to force on clean markdown. With `--apply-anchor`, LLM proposes which H2 in `narratives/<study>.md` the note belongs under and patches the wikilink in.
-
-Asking pattern: dispatcher requires `--study`; ask the user "this dialogue was for which study?" before invoking.
-
-Why latent: in practice, notes get written directly in conversation rather than imported from external chat exports.
-
-## `note-rewire [--study <slug>] [--apply]`
-Scans `notes/` for entries with frontmatter `study: <name>`, asks the LLM to propose anchor H2 sections in the matching narrative, and (with `--apply`) patches the wikilink. Default dry-run.
-
-Use case: a narrative gets built after notes for that study already exist standalone.
-
 ## `pipeline [--arxiv arxiv:X ...]`
 Convenience wrapper: ingest (optional) → lint → narratives. Returns `stages`, `stages_run`, `stages_ok`, `fatal_error`. Useful for batch automation but unused in interactive practice.
 

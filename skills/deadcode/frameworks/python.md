@@ -67,6 +67,9 @@ Typecheck: `pyright` or `mypy` if configured.
 - `@cached_property` / `@functools.lru_cache` / `@functools.cache`
 - `@dataclass` / `@dataclasses.dataclass` field declarations
 - `@app.exception_handler` (FastAPI)
+- `@app.middleware` (FastAPI), `dispatch` method of a `BaseHTTPMiddleware` subclass (Starlette — called by the runtime, never referenced directly)
+- `@app.template_global` / `@app.template_filter` / `@app.context_processor` (Flask Jinja — invoked at render time)
+- `@app.before_request` / `@app.after_request` / `@app.teardown_request` (Flask lifecycle)
 - `@receiver` (Django signals)
 
 ### Dunder methods
@@ -75,8 +78,9 @@ Typecheck: `pyright` or `mypy` if configured.
 
 ### Class-inheritance-required methods
 
-- `pydantic.BaseModel`: `Config` inner class, `model_config`, `@field_validator` / `@model_validator`
-- Django: `Meta` inner class, `save()` / `clean()` / `get_absolute_url()`
+- `pydantic.BaseModel`: `Config` inner class, `model_config`, `@field_validator` / `@model_validator`, `@field_serializer` / `@model_serializer`
+- `sqlalchemy.types.TypeDecorator` subclasses: `process_bind_param` / `process_result_value` / `process_literal_param` (ORM-invoked hooks, never called directly)
+- Django: `Meta` inner class, `save()` / `clean()` / `get_absolute_url()`; class-based view handlers `get` / `post` / `put` / `patch` / `delete` / `dispatch` / `get_queryset` / `get_context_data` / `form_valid` / `form_invalid`
 - `unittest.TestCase`: `setUp` / `tearDown` / `setUpClass` / `tearDownClass` / `test_*`
 - pytest: `setup_method` / `teardown_method` / `test_*` functions
 - ABC: `@abstractmethod` (subclasses override)

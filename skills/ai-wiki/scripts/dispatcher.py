@@ -13,8 +13,6 @@ Commands (v5):
     narrative-draft <source.md>  — source md → narrative tree
     narrative-split <slug> --section <H2> — split a bloating narrative
     coverage-narrative <slug>    — QuestEval gap report
-    note-from-chat <export.md> --study <slug> — chat export → notes/<slug>.md
-    note-rewire [--study <slug>] [--apply] — propose/apply anchor wikilinks for orphan notes
     pipeline                     — ingest → lint → narratives (v5)
     card-draft <slug> [--model <m>] — symbol-walk the tree → exhaustive atomic Q-A deck
     card-add --slug <s> --front <q> --back <a> — append one card by hand (rare)
@@ -25,7 +23,7 @@ v5 paradigm (REQUIREMENTS §14): concepts/ 廃止、ai-digest 独立化。
 はこの版で全削除された。`drill` の自動採点ループも削除。代わりに card-draft が
 narrative tree の記号([?][★][⟳]…)を決定論的に walk して網羅的な暗記デッキを生成
 (網羅は構造保証、LLMは清書のみ)。card-add は手動の補助。drill 会話は「ミス→その
-カードに戻れ」の診断に縮小 (SKILL.md "Recall drill & cards" / hard rule #2 参照)。
+カードに戻れ」の診断に縮小 (SKILL.md "Cards & recall drill" / hard rule #2 参照)。
 
 All commands accept --vault PATH (default: $AI_WIKI_ROOT or ~/ai-wiki).
 """
@@ -43,8 +41,6 @@ import coverage_qa as mod_coverage_qa  # noqa: E402
 import ingest as mod_ingest  # noqa: E402
 import narrative as mod_narrative  # noqa: E402
 import narrative_draft as mod_narrative_draft  # noqa: E402
-import note_from_chat as mod_note_from_chat  # noqa: E402
-import note_rewire as mod_note_rewire  # noqa: E402
 import pillars as mod_pillars  # noqa: E402
 import pipeline as mod_pipeline  # noqa: E402
 import schema as mod_schema  # noqa: E402
@@ -152,6 +148,9 @@ def cmd_narrative_draft(argv: list[str]) -> dict:
                    help="coverage ratio (0.0-1.0) below which QuestEval will iterate (default 0.95)")
     p.add_argument("--max-iterations", type=int, default=3,
                    help="max QuestEval remediation rounds per narrative (default 3)")
+    p.add_argument("--no-holdout", action="store_true",
+                   help="skip hold-out validation (the honest out-of-sample coverage "
+                        "measured on a fresh QA set the fixer never optimized against)")
     p.add_argument("--dry-run", action="store_true", help="parse + classify, no LLM calls")
     p.add_argument(
         "--force-strategy",
@@ -174,8 +173,9 @@ def cmd_narrative_draft(argv: list[str]) -> dict:
     p.add_argument(
         "--judge-model",
         default=None,
-        help="model for the faithfulness judge (default: a different model from "
-             "the opus generator, to avoid self-preference bias)",
+        help="model for the coverage judge AND the faithfulness judge (default: "
+             "sonnet — a different model from the opus generator, to avoid "
+             "self-preference bias / in-context reward hacking when grading own output)",
     )
     p.add_argument(
         "--annotate-inferred",
@@ -195,6 +195,7 @@ def cmd_narrative_draft(argv: list[str]) -> dict:
         run_coverage=not args.no_coverage,
         coverage_threshold=args.coverage_threshold,
         max_iterations=args.max_iterations,
+        holdout=not args.no_holdout,
         dry_run=args.dry_run,
         force_strategy=args.force_strategy,
         mode=args.mode,
@@ -223,51 +224,6 @@ def cmd_narrative_split(argv: list[str]) -> dict:
         new_slug=args.new_slug,
         use_cove=not args.no_cove,
         dry_run=args.dry_run,
-    )
-
-
-def cmd_note_from_chat(argv: list[str]) -> dict:
-    p = argparse.ArgumentParser(prog="dispatcher.py note-from-chat")
-    p.add_argument("export", help="path to chat export markdown file")
-    p.add_argument("--study", required=True,
-                   help="study identifier (typically the related narrative slug)")
-    p.add_argument("--slug", default=None, dest="slug_override",
-                   help="override slug for the resulting note (default: LLM proposes)")
-    p.add_argument("--no-anchor", action="store_true",
-                   help="do not propose an anchor wikilink even if narrative exists")
-    p.add_argument("--apply-anchor", action="store_true",
-                   help="patch the related narrative with the proposed wikilink")
-    p.add_argument("--no-detect-check", action="store_true",
-                   help="skip chat-export shape detection (allow non-chat input)")
-    p.add_argument("--dry-run", action="store_true")
-    p.add_argument("--vault", default=None)
-    args = p.parse_args(argv)
-    vault = Vault(root=args.vault) if args.vault else Vault()
-    return mod_note_from_chat.note_from_chat(
-        vault,
-        chat_path=args.export,
-        study=args.study,
-        slug_override=args.slug_override,
-        no_anchor=args.no_anchor,
-        apply_anchor=args.apply_anchor,
-        skip_detect_check=args.no_detect_check,
-        dry_run=args.dry_run,
-    )
-
-
-def cmd_note_rewire(argv: list[str]) -> dict:
-    p = argparse.ArgumentParser(prog="dispatcher.py note-rewire")
-    p.add_argument("--study", default=None, dest="study_filter",
-                   help="filter to a single study (default: all)")
-    p.add_argument("--apply", action="store_true",
-                   help="actually patch narratives (default: dry-run, propose only)")
-    p.add_argument("--vault", default=None)
-    args = p.parse_args(argv)
-    vault = Vault(root=args.vault) if args.vault else Vault()
-    return mod_note_rewire.note_rewire(
-        vault,
-        study_filter=args.study_filter,
-        apply=args.apply,
     )
 
 
@@ -312,8 +268,6 @@ COMMANDS = {
     "narratives": cmd_narratives,
     "narrative-draft": cmd_narrative_draft,
     "narrative-split": cmd_narrative_split,
-    "note-from-chat": cmd_note_from_chat,
-    "note-rewire": cmd_note_rewire,
     "pipeline": cmd_pipeline,
     "coverage-narrative": cmd_coverage_narrative,
 }

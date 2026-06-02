@@ -1,6 +1,6 @@
 ---
 name: mtg-md
-description: Turn a meeting-transcript markdown (audio ASR → md, e.g. the non-wecom files under 50_MTG_wecom — speakers labeled **西村:** / **女性:** / **ミウラ：** etc.) into an AI-optimized, information-lossless topic digest for a downstream AI to consume. Handles mixed speaker-label styles (colon inside/outside bold, half/full-width), removes ASR filler at "standard" strength, and normalizes speakers to real names. ALWAYS runs an interactive speaker-naming phase before formatting. Output is written beside the input as <stem>_ai.md. NOT for Claude Code conversation logs (use convo-md) and NOT for chat exports like wecom.
+description: Turn a meeting-transcript markdown into an AI-optimized, information-lossless topic digest for a downstream AI to consume. Handles mixed speaker-label styles (colon inside/outside bold, half/full-width), removes ASR filler at "standard" strength, and normalizes speakers to real names. ALWAYS runs an interactive speaker-naming phase before formatting. Output is written beside the input as <stem>_ai.md. NOT for Claude Code conversation logs (use convo-md) and NOT for chat exports like wecom.
 ---
 
 # mtg-md

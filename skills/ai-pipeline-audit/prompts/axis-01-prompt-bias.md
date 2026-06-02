@@ -11,6 +11,7 @@ Would an LLM reading this prompt be nudged toward a particular verdict before re
 - Emphasis anchoring: making some clauses visually or rhetorically heavier than others when the rule itself does not designate them as more important.
 - Meta-rationale baggage: rationale, design intent, or hints embedded inside the executor's context window that shift attention beyond the rule body.
 - Agreement-seeking phrasing: text that solicits confirmation from the LLM rather than stating the rule.
+- Sycophantic framing: text that pressures the executor to validate a user's premise or prior answer rather than judge it on the rule — restating the user's expected conclusion as context, or leaving no path by which the executor could legitimately disagree.
 - Authority framing: invoking external authority instead of stating the rule directly.
 
 ## What constitutes acceptable design

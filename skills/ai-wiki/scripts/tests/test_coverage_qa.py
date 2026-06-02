@@ -10,11 +10,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest  # noqa: E402
 from coverage_qa import (  # noqa: E402
+    DEFAULT_JUDGE_MODEL,
     CoverageStatus,
     QAItem,
     check_coverage,
     gap_report_path,
     generate_qa_set,
+    iterate_and_fix,
     load_qa_set,
     qa_set_path,
     run_coverage,
@@ -292,3 +294,98 @@ def test_run_coverage_regenerate_qa(vault: Vault, tmp_path, monkeypatch):
     # Cache was updated
     cached = load_qa_set(vault, "demo")
     assert cached[0].q == "new Q"
+
+
+# ---------- judge model separation + hold-out ----------
+
+
+def _capturing_run(envelope: dict, captured: list):
+    def fake_run(*args, **kwargs):
+        captured.append(args[0])  # the cli argv list
+
+        class Fake:
+            returncode = 0
+            stdout = json.dumps(envelope)
+            stderr = ""
+        return Fake()
+    return fake_run
+
+
+def test_check_coverage_uses_sonnet_judge_by_default(vault: Vault, monkeypatch):
+    """The coverage judge must run on a DIFFERENT model from the opus generator
+    (default sonnet) to dodge self-preference bias."""
+    qa = [QAItem(q="Q1", a="A1")]
+    env = {"result": json.dumps([{"q": "Q1", "status": "covered"}]),
+           "is_error": False, "usage": {}, "total_cost_usd": 0.01}
+    captured: list = []
+    monkeypatch.setattr(subprocess, "run", _capturing_run(env, captured))
+
+    check_coverage(vault, "slug", "body", qa)
+    assert DEFAULT_JUDGE_MODEL == "sonnet"
+    assert "--model" in captured[0]
+    assert captured[0][captured[0].index("--model") + 1] == "sonnet"
+
+
+def test_check_coverage_judge_model_override(vault: Vault, monkeypatch):
+    qa = [QAItem(q="Q1", a="A1")]
+    env = {"result": json.dumps([{"q": "Q1", "status": "covered"}]),
+           "is_error": False, "usage": {}, "total_cost_usd": 0.01}
+    captured: list = []
+    monkeypatch.setattr(subprocess, "run", _capturing_run(env, captured))
+
+    check_coverage(vault, "slug", "body", qa, judge_model="haiku")
+    assert captured[0][captured[0].index("--model") + 1] == "haiku"
+
+
+def test_iterate_and_fix_holdout_measures_on_independent_set(vault: Vault, monkeypatch):
+    """Hold-out coverage is measured on a fresh QA set the fixer never saw, and
+    is reported separately from the (optimized) in-sample coverage."""
+    qa = {"result": json.dumps([{"q": "Q?", "a": "A"}]),
+          "is_error": False, "usage": {}, "total_cost_usd": 0.1}
+    check = {"result": json.dumps([{"q": "Q?", "status": "covered"}]),
+             "is_error": False, "usage": {}, "total_cost_usd": 0.02}
+    ho_qa = {"result": json.dumps([{"q": "Q2?", "a": "A2"}, {"q": "Q3?", "a": "A3"}]),
+             "is_error": False, "usage": {}, "total_cost_usd": 0.1}
+    # Hold-out: one of two covered → 50%, distinct from the 100% in-sample number.
+    ho_check = {"result": json.dumps([
+        {"q": "Q2?", "status": "covered"}, {"q": "Q3?", "status": "missing"}]),
+        "is_error": False, "usage": {}, "total_cost_usd": 0.02}
+    # Order: qa_gen → qa_check (converged) → ho_qa_gen → ho_qa_check
+    monkeypatch.setattr(subprocess, "run", _mock_sequence(qa, check, ho_qa, ho_check))
+
+    res = iterate_and_fix(
+        vault, "slug", "Title", "narrative body", "source text",
+        coverage_threshold=0.95, max_iterations=3,
+    )
+    rep = res.final_coverage
+    assert rep.coverage_pct == 100.0          # in-sample (what fix optimized)
+    assert rep.holdout_coverage_pct == 50.0   # honest out-of-sample
+    assert rep.holdout_total == 2
+    assert rep.holdout_covered == 1
+    # The hold-out set is persisted separately from the training set.
+    assert qa_set_path(vault, "slug", holdout=True).exists()
+    assert qa_set_path(vault, "slug", holdout=True) != qa_set_path(vault, "slug")
+    # Cost invariant: the nested report cost matches the returned cost.
+    assert rep.cost_usd == res.cost_usd
+    assert rep.cost_usd == pytest.approx(0.24)  # 0.1+0.02+0.1+0.02
+
+
+def test_iterate_and_fix_holdout_disabled(vault: Vault, monkeypatch):
+    """holdout=False: no hold-out set generated, no hold-out fields, no extra calls."""
+    qa = {"result": json.dumps([{"q": "Q?", "a": "A"}]),
+          "is_error": False, "usage": {}, "total_cost_usd": 0.1}
+    check = {"result": json.dumps([{"q": "Q?", "status": "covered"}]),
+             "is_error": False, "usage": {}, "total_cost_usd": 0.02}
+    # Only qa_gen + qa_check — a 3rd mocked call would mean an unwanted hold-out call.
+    monkeypatch.setattr(subprocess, "run", _mock_sequence(qa, check))
+
+    res = iterate_and_fix(
+        vault, "slug", "Title", "body", "source",
+        coverage_threshold=0.95, max_iterations=3, holdout=False,
+    )
+    rep = res.final_coverage
+    assert rep.coverage_pct == 100.0
+    assert rep.holdout_coverage_pct is None
+    assert rep.holdout_total == 0
+    assert not qa_set_path(vault, "slug", holdout=True).exists()
+    assert rep.cost_usd == res.cost_usd

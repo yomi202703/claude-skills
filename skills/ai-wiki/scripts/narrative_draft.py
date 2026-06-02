@@ -377,6 +377,8 @@ def _generate_single(
     run_coverage_iterate: bool = True,
     coverage_threshold: float = 0.95,
     max_iterations: int = 3,
+    judge_model: str = coverage_qa.DEFAULT_JUDGE_MODEL,
+    holdout: bool = True,
 ) -> tuple[str | None, float, list[str], list[str], dict | None]:
     """Generate a single narrative.
 
@@ -402,6 +404,8 @@ def _generate_single(
             vault, slug, title, body, source_text,
             coverage_threshold=coverage_threshold,
             max_iterations=max_iterations,
+            judge_model=judge_model,
+            holdout=holdout,
         )
         body = iter_result.final_body
         cost += iter_result.cost_usd
@@ -503,6 +507,8 @@ def _generate_hierarchical(
     run_coverage_iterate: bool = True,
     coverage_threshold: float = 0.95,
     max_iterations: int = 3,
+    judge_model: str = coverage_qa.DEFAULT_JUDGE_MODEL,
+    holdout: bool = True,
 ) -> tuple[list[str], float, list[dict], list[str], list[dict]]:
     """Generate sub-narratives then master. Returns (written_slugs, cost,
     errors, warnings, coverage_reports).
@@ -544,6 +550,8 @@ def _generate_hierarchical(
                 vault, sub_slug, sub_title, body, section_source,
                 coverage_threshold=coverage_threshold,
                 max_iterations=max_iterations,
+                judge_model=judge_model,
+                holdout=holdout,
             )
             body = iter_result.final_body
             total_cost += iter_result.cost_usd
@@ -617,6 +625,8 @@ def _generate_peer(
     run_coverage_iterate: bool = True,
     coverage_threshold: float = 0.95,
     max_iterations: int = 3,
+    judge_model: str = coverage_qa.DEFAULT_JUDGE_MODEL,
+    holdout: bool = True,
 ) -> tuple[list[str], float, list[dict], list[str], list[dict]]:
     """Generate one independent *peer* tree per major section — no master hub.
 
@@ -643,6 +653,8 @@ def _generate_peer(
             run_coverage_iterate=run_coverage_iterate,
             coverage_threshold=coverage_threshold,
             max_iterations=max_iterations,
+            judge_model=judge_model,
+            holdout=holdout,
         )
         total_cost += cost
         warnings.extend([f"{peer_slug}: {w}" for w in warns])
@@ -814,6 +826,7 @@ def narrative_draft(
     run_coverage: bool = True,
     coverage_threshold: float = 0.95,
     max_iterations: int = 3,
+    holdout: bool = True,
     run_faithfulness: bool = False,
     judge_model: str | None = None,
     annotate_inferred: bool = False,
@@ -958,6 +971,9 @@ def narrative_draft(
         return report.to_dict()
 
     coverage_reports: list[dict] = []
+    # Coverage judge runs on a different model from the opus generator (default
+    # sonnet) — same self-preference-dodge rationale as the faithfulness judge.
+    jm_cov = judge_model or coverage_qa.DEFAULT_JUDGE_MODEL
 
     if strategy == "peer":
         written, cost, errors, warnings, covs = _generate_peer(
@@ -969,6 +985,8 @@ def narrative_draft(
             run_coverage_iterate=run_coverage,
             coverage_threshold=coverage_threshold,
             max_iterations=max_iterations,
+            judge_model=jm_cov,
+            holdout=holdout,
         )
         report.total_cost_usd = cost
         report.narratives_written.extend(written)
@@ -983,6 +1001,8 @@ def narrative_draft(
             run_coverage_iterate=run_coverage,
             coverage_threshold=coverage_threshold,
             max_iterations=max_iterations,
+            judge_model=jm_cov,
+            holdout=holdout,
         )
         report.total_cost_usd = cost
         report.warnings.extend(warnings)
@@ -1002,6 +1022,8 @@ def narrative_draft(
             run_coverage_iterate=run_coverage,
             coverage_threshold=coverage_threshold,
             max_iterations=max_iterations,
+            judge_model=jm_cov,
+            holdout=holdout,
         )
         report.total_cost_usd = cost
         report.warnings.extend(warnings)
@@ -1029,6 +1051,8 @@ def narrative_draft(
             run_coverage_iterate=run_coverage,
             coverage_threshold=coverage_threshold,
             max_iterations=max_iterations,
+            judge_model=jm_cov,
+            holdout=holdout,
         )
         report.total_cost_usd = cost
         report.warnings.extend(warnings)
@@ -1051,6 +1075,8 @@ def narrative_draft(
             run_coverage_iterate=run_coverage,
             coverage_threshold=coverage_threshold,
             max_iterations=max_iterations,
+            judge_model=jm_cov,
+            holdout=holdout,
         )
         report.total_cost_usd = cost
         report.narratives_written.extend(written)

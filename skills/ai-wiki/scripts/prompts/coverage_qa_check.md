@@ -1,9 +1,13 @@
 # coverage_qa_check v1.0
 
 <!-- meta:
-  model: opus
+  model: sonnet
   parse_json: true
   -->
+<!-- NOTE: judging (covered/partial/missing) runs on a *different* model from the
+     opus generator on purpose — dodges self-preference bias / reward hacking when
+     a model grades text it wrote. Caller passes judge_model explicitly; this meta
+     is the default if called bare. -->
 
 ## System
 

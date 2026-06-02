@@ -8,7 +8,13 @@ from typing import Any, Literal
 Verdict = Literal["PROMOTE", "HOLD", "ROLLBACK"]
 
 
-THRESHOLDS: dict[str, dict[str, float]] = {
+# Default thresholds. These are internal / domain-specific, NOT a published
+# standard: 2026 agentic success rates vary widely by benchmark (e.g. SWE-bench
+# ~80%, WebArena ~62%, OSWorld 12-66%), so a fixed task_success floor is only
+# meaningful relative to a given eval suite. Override per suite by passing a
+# "thresholds" key in the metrics JSON, and prefer a relative "baseline" for
+# task_success (see _classify_dim).
+DEFAULT_THRESHOLDS: dict[str, dict[str, float]] = {
     "task_success":          {"promote": 0.80, "hold": 0.56},
     "context_preservation":  {"promote": 0.90, "hold": 0.63},
     "p95_latency_ms":        {"promote": 15000.0, "hold": 21000.0},
@@ -16,13 +22,31 @@ THRESHOLDS: dict[str, dict[str, float]] = {
     "evidence_coverage":     {"promote": 0.80, "hold": 0.56},
     "axis_05_violations":    {"promote": 0.0, "hold": 2.0},
     "axis_06_violations":    {"promote": 0.0, "hold": 2.0},
+    "axis_07_violations":    {"promote": 0.0, "hold": 2.0},
+    "axis_08_violations":    {"promote": 0.0, "hold": 2.0},
 }
 
-UPPER_BOUND_METRICS = {"p95_latency_ms", "axis_05_violations", "axis_06_violations"}
+UPPER_BOUND_METRICS = {
+    "p95_latency_ms",
+    "axis_05_violations",
+    "axis_06_violations",
+    "axis_07_violations",
+    "axis_08_violations",
+}
 
 
-def _classify_dim(metric: str, value: float) -> Verdict:
-    th = THRESHOLDS[metric]
+def _classify_dim(
+    metric: str,
+    value: float,
+    thresholds: dict[str, dict[str, float]],
+    baseline: float | None = None,
+) -> Verdict:
+    th = thresholds[metric]
+    # task_success may be judged relative to a baseline: an absolute floor is not
+    # comparable across benchmarks, but improvement over the suite's own baseline
+    # is. promote/hold are then read as required deltas above baseline.
+    if metric == "task_success" and baseline is not None:
+        value = value - baseline
     if metric in UPPER_BOUND_METRICS:
         if value <= th["promote"]:
             return "PROMOTE"
@@ -37,11 +61,19 @@ def _classify_dim(metric: str, value: float) -> Verdict:
 
 
 def to_verdict(metrics: dict[str, Any]) -> Verdict:
+    """Map a metrics dict to PROMOTE / HOLD / ROLLBACK.
+
+    Recognised non-metric keys: "thresholds" (per-metric override merged over the
+    defaults) and "baseline" (relative reference for task_success)."""
+    overrides = metrics.get("thresholds") or {}
+    thresholds = {**DEFAULT_THRESHOLDS, **overrides}
+    baseline = metrics.get("baseline")
+
     per_dim: list[Verdict] = []
-    for key in THRESHOLDS:
+    for key in thresholds:
         if key not in metrics:
             continue
-        per_dim.append(_classify_dim(key, float(metrics[key])))
+        per_dim.append(_classify_dim(key, float(metrics[key]), thresholds, baseline))
     if not per_dim:
         return "HOLD"
     if any(v == "ROLLBACK" for v in per_dim):

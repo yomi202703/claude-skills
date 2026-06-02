@@ -484,8 +484,9 @@ def test_narrative_draft_slug_conflict_errors(vault: Vault, tmp_path, monkeypatc
 
 
 def test_narrative_draft_coverage_runs_after_commit(vault: Vault, tmp_path, monkeypatch):
-    """v5-5 flow: gen → QuestEval iterate (qa_gen + qa_check, converged) → CoVe → commit.
-    4 LLM calls when converged on first coverage iteration."""
+    """v5-5 flow: gen → QuestEval iterate (qa_gen + qa_check, converged) →
+    hold-out (ho_qa_gen + ho_qa_check) → CoVe → commit. 6 LLM calls when
+    converged on first coverage iteration and hold-out enabled."""
     src = tmp_path / "foo.md"
     src.write_text("# Foo\n\nbody text\n", encoding="utf-8")
 
@@ -498,17 +499,29 @@ def test_narrative_draft_coverage_runs_after_commit(vault: Vault, tmp_path, monk
         "result": json.dumps([{"q": "What is foo?", "status": "covered"}]),
         "is_error": False, "usage": {}, "total_cost_usd": 0.02,
     }
+    # Hold-out: an independent QA draw + check on the final body (measurement only).
+    ho_qa = {
+        "result": json.dumps([{"q": "Why foo?", "a": "because..."}]),
+        "is_error": False, "usage": {}, "total_cost_usd": 0.1,
+    }
+    ho_check = {
+        "result": json.dumps([{"q": "Why foo?", "status": "covered"}]),
+        "is_error": False, "usage": {}, "total_cost_usd": 0.02,
+    }
     cove = {"result": "NO_CORRECTIONS_NEEDED", "is_error": False, "usage": {}, "total_cost_usd": 0.03}
-    # v5-5 order: gen → qa_gen → qa_check (converged) → cove
-    monkeypatch.setattr(subprocess, "run", _mock_llm_sequence(gen, qa, check, cove))
+    # v5-5 order: gen → qa_gen → qa_check (converged) → ho_qa_gen → ho_qa_check → cove
+    monkeypatch.setattr(subprocess, "run", _mock_llm_sequence(gen, qa, check, ho_qa, ho_check, cove))
 
     out = narrative_draft(vault, src)  # run_coverage default True
     assert out["narratives_written"] == ["foo"]
     assert "coverage" in out
     assert len(out["coverage"]) == 1
     assert out["coverage"][0]["final_coverage"]["total"] == 1
-    # Total cost includes draft + coverage iterate + cove
-    assert out["total_cost_usd"] == pytest.approx(0.30)
+    # Hold-out coverage measured on the fresh set (1 item, covered → 100%)
+    assert out["coverage"][0]["final_coverage"]["holdout_coverage_pct"] == 100.0
+    assert out["coverage"][0]["final_coverage"]["holdout_total"] == 1
+    # Total cost includes draft + coverage iterate + hold-out + cove
+    assert out["total_cost_usd"] == pytest.approx(0.42)
 
 
 def test_narrative_draft_coverage_skipped_on_validation_failure(vault: Vault, tmp_path, monkeypatch):
@@ -527,8 +540,16 @@ def test_narrative_draft_coverage_skipped_on_validation_failure(vault: Vault, tm
         "result": json.dumps([{"q": "Q?", "status": "covered"}]),
         "is_error": False, "usage": {}, "total_cost_usd": 0.02,
     }
+    ho_qa = {
+        "result": json.dumps([{"q": "Q2?", "a": "A2"}]),
+        "is_error": False, "usage": {}, "total_cost_usd": 0.1,
+    }
+    ho_check = {
+        "result": json.dumps([{"q": "Q2?", "status": "covered"}]),
+        "is_error": False, "usage": {}, "total_cost_usd": 0.02,
+    }
     cove = {"result": "NO_CORRECTIONS_NEEDED", "is_error": False, "usage": {}, "total_cost_usd": 0.03}
-    monkeypatch.setattr(subprocess, "run", _mock_llm_sequence(gen, qa, check, cove))
+    monkeypatch.setattr(subprocess, "run", _mock_llm_sequence(gen, qa, check, ho_qa, ho_check, cove))
 
     out = narrative_draft(vault, src)  # default run_coverage=True
     assert out["narratives_written"] == []

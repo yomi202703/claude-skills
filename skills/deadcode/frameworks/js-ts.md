@@ -59,6 +59,18 @@ Typecheck: `scripts.typecheck` if defined, else `npx tsc --noEmit`.
 - `@Get()` / `@Post()` / `@Put()` / `@Delete()` / `@Patch()` handlers
 - `@WebSocketGateway()` / `@SubscribeMessage()`
 
+### Express / runtime-routed handlers
+
+- functions registered via `app.get(...)` / `app.post(...)` / `app.put(...)` / `app.delete(...)` / `app.use(...)` / `router.<verb>(...)` — invoked by the framework, never referenced directly
+
+### CommonJS barrel / re-export chains
+
+- `module.exports = require('./x')` and `exports.Y = require('./y').Y` re-exports — knip's resolver can miss these chains, so a symbol reachable only through a CJS barrel reads as unused. Treat the re-exported target as live; verify with `rg` for the `require('./<file>')` link before trusting an "unused" verdict.
+
+### Monorepo
+
+- Cross-package imports (`packages/a/src` → `packages/b/src`) are only resolved when knip runs with the workspace config. A single root-`package.json` run misses them and floods false positives. Ensure `knip.json` declares the workspaces (or run knip workspace-aware); do not delete a cross-package export found by a root-only scan.
+
 ### TypeScript types
 
 - `interface` / `type` field declarations
@@ -73,11 +85,11 @@ Typecheck: `scripts.typecheck` if defined, else `npx tsc --noEmit`.
 
 ## ENTRYPOINTS
 
-Knip auto-detects `main` / `bin` / `exports` from `package.json`. Custom script entries: add to `knip.json`:
+Knip auto-detects `main` / `bin` / `exports` from `package.json`. Build orchestrators and non-standard entry files (`taskfile.js`, `gulpfile.js`, `scripts/*.{ts,js}`, `bin/*`) are not auto-detected and must be registered as entries, or everything they reach reads as orphaned. Custom script entries: add to `knip.json`:
 
 ```json
 {
-  "entry": ["src/index.ts", "scripts/*.ts", "bin/cli.ts"],
+  "entry": ["src/index.ts", "scripts/*.ts", "bin/cli.ts", "taskfile.js"],
   "project": ["src/**/*.ts", "scripts/**/*.ts"]
 }
 ```

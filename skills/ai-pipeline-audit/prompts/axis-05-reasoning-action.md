@@ -1,68 +1,61 @@
-# Axis 5: Reasoning-action mismatch
+# Axis 5: Reasoning-action grounding
 
-You audit a span trace for divergence between an agent's stated reasoning and the action it actually executed. Other audit axes are handled by other subagents — flag only what fits this axis.
+You audit a span trace for actions that are not grounded in what the agent actually observed. Other audit axes are handled by other subagents — flag only what fits this axis.
+
+The ground truth in a trace is the observations (tool outputs, retrieved data, prior results) and the actions taken. The agent's stated reasoning text is a claim about those, not evidence of them: reasoning and action can diverge in prose without the action being wrong, and a sound action can carry sloppy narration. A divergence between reasoning prose and action is therefore not itself a finding. Flag only when the action is unsupported by, or contradicted by, the observations.
 
 ## Verdict question
 
-In the trace, does the agent's stated reasoning consistently match the action it actually took?
+Is each action justified by the observations available at that point in the trace — independent of how the reasoning narrates it?
 
 This axis is detectable only in trace data. If no `$TRACE` is provided, return `[]`.
 
 ## Trace input contract
 
-`$TRACE` is either:
-
-1. A path to a JSON file containing an array of OpenTelemetry-style GenAI spans, or
-2. A path to a directory holding multiple such JSON files, or
-3. An inline JSON array.
-
-Each span is a JSON object with at minimum these attributes (OpenTelemetry GenAI semantic conventions, 2025):
+`$TRACE` is a path to a JSON file or directory of OpenTelemetry GenAI spans, or an inline JSON array. Each span carries attributes following the GenAI semantic conventions. These conventions are still pre-stable (Development status), so attribute names may vary — read the current name and accept the legacy alias as fallback:
 
 ```
 {
   "span_id":  "<hex>",
   "trace_id": "<hex>",
-  "name":     "gen_ai.chat" | "gen_ai.tool" | ...,
   "attributes": {
-    "gen_ai.system":                "gemma" | "openai" | ...,
-    "gen_ai.request.model":         "...",
-    "gen_ai.prompt":                "<the prompt text>",
-    "gen_ai.completion":            "<the assistant text>",
-    "gen_ai.response.tool_calls":   "<json array as string, optional>",
-    "gen_ai.response.finish_reason": "stop" | "length" | "tool_calls" | ...
+    "gen_ai.operation.name":   "chat" | "execute_tool" | "invoke_agent" | ...,
+    "gen_ai.provider.name":    "...",          // legacy: gen_ai.system
+    "gen_ai.request.model":    "...",
+    "gen_ai.input.messages":   <messages>,     // legacy: gen_ai.prompt
+    "gen_ai.output.messages":  <messages>,     // legacy: gen_ai.completion
+    "gen_ai.tool.name":        "...",          // on execute_tool spans
+    "gen_ai.finish_reasons":   ["stop" | "tool_calls" | ...]  // legacy: gen_ai.response.finish_reason
   }
 }
 ```
 
-A "reasoning block" is the assistant-emitted text inside `gen_ai.completion`. Within it, any text delimited by `<thinking>...</thinking>`, `## Plan`, `## Reasoning`, or analogous explicit reasoning sections is the stated reasoning. The "action" is whatever the agent did next, materialized either as:
-
-- the tool calls in `gen_ai.response.tool_calls` of the same span, or
-- the next span in chronological order for the same `trace_id`.
+The "observations" for a span are the tool outputs and results visible in earlier spans of the same `trace_id` plus any data in its own input messages. The "action" is the tool call(s) the agent issues or the assertion it commits in its output. The "stated reasoning" is any `<thinking>`/`## Plan`/`## Reasoning` text — treat it as a claim to be checked, never as evidence.
 
 ## What constitutes the failure
 
-- Decision mismatch: stated decision in reasoning differs from the executed action / tool call.
-- Plan-skip: reasoning enumerates a plan whose steps the subsequent actions do not follow in order.
-- Hedge-to-assertion: reasoning expresses uncertainty but the output (completion or downstream action) asserts confidence without resolving the uncertainty.
-- Stated-vs-actual tool use: reasoning describes a preparatory step (e.g. "I will first read X") that the next action skips.
+- Unsupported action: the action presupposes a fact or result that no prior observation establishes.
+- Observation contradiction: the action does the opposite of what the observations indicate (e.g. proceeds as if a check passed when the observed result was a failure).
+- Hedge-to-assertion: the observations are inconclusive, yet the action commits a confident assertion without an intervening step that would resolve the uncertainty.
+- Skipped prerequisite: the action depends on a preparatory step whose observation is absent from the trace (the prerequisite was never actually performed).
+
+Reasoning text may be used to interpret what the action intended, but a divergence between reasoning prose and action is not itself a finding; only an action ungrounded in observation is.
 
 ## What constitutes acceptable design
 
-Reasoning and action align consistently: stated decision is the action taken, stated plan is the plan executed in order, hedging in reasoning is reflected in subsequent confidence or in a follow-up clarification, and stated preparatory steps occur as actual prior actions.
+Every action follows from an observation present in the trace; actions taken under inconclusive observations are tentative or are preceded by a resolving step; and prerequisite steps appear as real prior observations rather than only as narrated intent.
 
 ## How to inspect
 
-Walk through `$TRACE` chronologically (sort spans within each `trace_id` by `started_at` if present, else by array order).
+Walk through `$TRACE` chronologically (sort spans within each `trace_id` by `started_at` if present, else array order).
 
-For each span containing assistant reasoning:
+For each action-bearing span:
 
-1. Identify the stated decision, plan, or preparatory intent in `gen_ai.completion`.
-2. Locate the immediately following action: either `gen_ai.response.tool_calls` on the same span, or the next span(s) under the same `trace_id`.
-3. Compare. Record each mismatch individually.
+1. Identify the action (tool call issued, or assertion committed in the output).
+2. Gather the observations available at that point: tool outputs / results from prior spans of the same `trace_id`, plus the span's own input data.
+3. Decide whether the observations support the action. Flag only when the action is unsupported, contradicts the observations, asserts confidence the observations do not license, or depends on a prerequisite no observation establishes.
 
-Each individual mismatch becomes one output entry. Do not emit a summary entry that aggregates mismatches; report each mismatch separately so the report cannot be satisfied by a fabricated rate.
-
-Inspection is complete when every reasoning-bearing span has been visited.
+Record each violation individually. Do not emit a summary entry that aggregates mismatches; report each one separately so the report cannot be satisfied by a fabricated rate. Inspection is complete when every action-bearing span has been visited.
 
 ## Output
 
@@ -70,7 +63,7 @@ Strict JSON only.
 
 ```json
 [
-  {"file": "<span_id or trace_id>", "line": <int span_index>, "evidence": "<short summary of the mismatch>", "severity": "high|medium|low", "why": "<one-line>"}
+  {"file": "<span_id or trace_id>", "line": <int span_index>, "evidence": "<short summary of the ungrounded action>", "severity": "high|medium|low", "why": "<one-line>"}
 ]
 ```
 
