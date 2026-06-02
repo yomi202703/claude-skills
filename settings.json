@@ -7,7 +7,6 @@
     "keybindings-help": "off",
     "simplify": "off",
     "fewer-permission-prompts": "off",
-    "loop": "off",
     "schedule": "off",
     "claude-api": "name-only",
     "code-consistency": "name-only",

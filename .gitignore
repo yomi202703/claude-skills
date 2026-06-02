@@ -16,3 +16,8 @@
 **/__pycache__/
 **/*.pyc
 **/node_modules/
+
+# Credentials / local config for individual skills (do not commit).
+# Each skill may keep its own .env (with API keys) and a checked-in .env.example.
+**/.env
+!**/.env.example
