@@ -13,6 +13,7 @@ from narrative_draft import (  # noqa: E402
     Section,
     _derive_title,
     _extract_section_plan,
+    _is_noise_section,
     _peer_slug,
     _strip_meta_preamble,
     _sub_slug,
@@ -21,6 +22,7 @@ from narrative_draft import (  # noqa: E402
     normalize_heading_levels,
     parse_markdown_structure,
     select_strategy,
+    source_preflight,
 )
 from vault import Vault  # noqa: E402
 
@@ -324,6 +326,35 @@ def test_narrative_draft_single_shot_happy(vault: Vault, tmp_path, monkeypatch):
     written = vault.read("narrative", "foo")
     assert written is not None
     assert "## ROOT" in written.body
+
+
+def test_narrative_draft_archives_source(vault: Vault, tmp_path, monkeypatch):
+    # A successful draft stores its source under sources/ (verify-against truth).
+    src = tmp_path / "foo.md"
+    src.write_text("# Foo\n\nbody text\n", encoding="utf-8")
+    gen_env = {"result": VALID_NARRATIVE_BODY, "is_error": False, "usage": {}, "total_cost_usd": 0.15}
+    cove_env = {"result": "NO_CORRECTIONS_NEEDED", "is_error": False, "usage": {}, "total_cost_usd": 0.03}
+    monkeypatch.setattr(subprocess, "run", _mock_llm_sequence(gen_env, cove_env))
+
+    out = narrative_draft(vault, src, run_coverage=False)
+    ing = out["source_ingested"]
+    assert ing.get("slug")
+    assert ing.get("reused") is False
+    assert vault.exists("source", ing["slug"])
+    # The stored source body matches the original file.
+    assert "body text" in vault.read("source", ing["slug"]).body
+
+
+def test_narrative_draft_no_ingest_source_flag(vault: Vault, tmp_path, monkeypatch):
+    src = tmp_path / "foo.md"
+    src.write_text("# Foo\n\nbody text\n", encoding="utf-8")
+    gen_env = {"result": VALID_NARRATIVE_BODY, "is_error": False, "usage": {}, "total_cost_usd": 0.15}
+    cove_env = {"result": "NO_CORRECTIONS_NEEDED", "is_error": False, "usage": {}, "total_cost_usd": 0.03}
+    monkeypatch.setattr(subprocess, "run", _mock_llm_sequence(gen_env, cove_env))
+
+    out = narrative_draft(vault, src, run_coverage=False, ingest_source=False)
+    assert out["source_ingested"] == {}
+    assert vault.list_pages("source") == []
 
 
 def test_narrative_draft_cove_applies_correction(vault: Vault, tmp_path, monkeypatch):
@@ -672,3 +703,51 @@ def test_narrative_draft_hierarchical_flat_headings_falls_back(
     assert out["narratives_written"] == ["flat"]
     assert not out["errors"]
     assert any("no level-2" in w for w in out["warnings"])
+
+
+# ---------- source_preflight (structural quality check) ----------
+
+
+def test_is_noise_section_matches_tangents():
+    assert _is_noise_section("余談（ざっくりまとめ）")
+    assert _is_noise_section("前回のコメント返し")
+    assert _is_noise_section("次回の予告")
+    assert _is_noise_section("中休み")
+    assert _is_noise_section("次回予告：第6回 産業・労働社会学")
+    # genuine content must NOT be flagged
+    assert not _is_noise_section("人事・労務管理論の基礎的考え")
+    assert not _is_noise_section("複雑人モデル")
+    assert not _is_noise_section(None)
+
+
+def test_source_preflight_flags_duplicates_and_noise():
+    text = (
+        "# 講義タイトル\n\n本文0\n\n"
+        "## 余談（雑談）\n雑談本文\n\n"
+        "## 基礎概念\nコア1\n\n"
+        "## 基礎概念\nコア2\n\n"      # duplicate title
+        "## 基礎概念\nコア3\n\n"      # duplicate title
+        "## 次回の予告\n来週の話\n"
+    )
+    sections = parse_markdown_structure(text)
+    pf, warnings = source_preflight(
+        sections, estimate_tokens(text), heading_normalized=False
+    )
+    assert pf["duplicate_title_groups"].get("基礎概念") == 3
+    assert "余談（雑談）" in pf["noise_sections"]
+    assert "次回の予告" in pf["noise_sections"]
+    assert 0.0 < pf["in_scope_ratio"] <= 1.0
+    assert any("duplicated heading" in w for w in warnings)
+    assert any("off-topic" in w for w in warnings)
+
+
+def test_source_preflight_clean_source_no_warnings():
+    text = "# タイトル\n\n## 概念A\n説明A\n\n## 概念B\n説明B\n"
+    sections = parse_markdown_structure(text)
+    pf, warnings = source_preflight(
+        sections, estimate_tokens(text), heading_normalized=False
+    )
+    assert pf["duplicate_heading_count"] == 0
+    assert pf["noise_sections"] == []
+    assert pf["in_scope_ratio"] == 1.0
+    assert warnings == []

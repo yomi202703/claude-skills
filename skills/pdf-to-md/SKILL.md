@@ -29,11 +29,15 @@ Pre-flight for image input: the bundler natural-sorts and the result includes `b
 
 ### `convert` flags
 
-`--backend hybrid-auto-engine` (default, ~95% accuracy) / `pipeline` (fast, ~85%) / `vlm-auto-engine`. `--lang japan` default. Others via `--help`.
+`--backend hybrid-auto-engine` (default, ~95% accuracy) / `pipeline` (fast, ~85%) / `vlm-auto-engine`. `--lang japan` default. `--no-restructure` keeps MinerU's raw flat headings (see below). Others via `--help`.
+
+### Heading reconstruction (slide decks)
+
+MinerU tags every slide title as a level-1 `#`, so a presentation PDF comes out with no document-title/section distinction, mis-tagged body lines as headings, and the same slide title repeated across N slides. After a successful convert, a **layout-aware post-pass** (`restructure.py`, no LLM) reads the sibling `<stem>_content_list.json` (`text_level` + `bbox` + `page_idx`) and rebuilds the hierarchy: first slide title → `#` doc title, each page's first heading → `##` section, extra headings on a page → demoted to body, and runs of identical slide titles → one merged section. The original MinerU markdown is preserved as `<stem>.raw.md`; the result's `restructure` field reports `{applied, doc_title, sections_after, demoted_to_body, merged_duplicate_runs}`. It is a **no-op for genuinely hierarchical PDFs** (MinerU already emitting `##`/`###`) and whenever md/JSON headings don't align 1:1 — so it never mangles a well-structured document. Disable with `--no-restructure`.
 
 ## Output
 
-`~/preprocessed/<stem>/<backend>/<stem>.md` + sibling `images/`. Math = LaTeX, tables = markdown, figures = image refs + `<details>` captions, flowcharts → mermaid.
+`~/preprocessed/<stem>/<backend>/<stem>.md` (+ `<stem>.raw.md` when restructured) + sibling `images/`. Math = LaTeX, tables = markdown, figures = image refs + `<details>` captions, flowcharts → mermaid.
 
 ## Examples
 

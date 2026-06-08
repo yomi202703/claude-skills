@@ -17,6 +17,10 @@ Commands (v5):
     card-draft <slug> [--model <m>] — symbol-walk the tree → exhaustive atomic Q-A deck
     card-add --slug <s> --front <q> --back <a> — append one card by hand (rare)
     cards [<slug>]               — dump deck(s) as JSON
+    derivation-scan <source.md> [--anchor <n>] — source → derivation target manifest (台帳)
+    derivation-draft <source.md> --slug <s> --goal <g> [--anchor <n>] [--judge-model M]
+                                 — source(+anchor)+goal → subgoal-labeled spine (judge-verified)
+    derivations                  — validate derivations/, regenerate _index.md
 
 v5 paradigm (REQUIREMENTS §14): concepts/ 廃止、ai-digest 独立化。
 `enrich`, `project`, `coverage`, `research`, `ingest --from-digest`
@@ -38,6 +42,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import card_draft as mod_card_draft  # noqa: E402
 import cards as mod_cards  # noqa: E402
 import coverage_qa as mod_coverage_qa  # noqa: E402
+import derivation as mod_derivation  # noqa: E402
+import derivation_draft as mod_derivation_draft  # noqa: E402
+import derivation_scan as mod_derivation_scan  # noqa: E402
 import ingest as mod_ingest  # noqa: E402
 import narrative as mod_narrative  # noqa: E402
 import narrative_draft as mod_narrative_draft  # noqa: E402
@@ -183,6 +190,12 @@ def cmd_narrative_draft(argv: list[str]) -> dict:
         help="mark synthesized spine edges in-tree with [~] (implies "
              "--faithfulness); idempotent, validates before rewriting",
     )
+    p.add_argument(
+        "--no-ingest-source",
+        action="store_true",
+        help="do not archive the source under sources/ after a successful draft "
+             "(by default the source is stored idempotently as the verify-against truth)",
+    )
     p.add_argument("--vault", default=None)
     args = p.parse_args(argv)
     vault = Vault(root=args.vault) if args.vault else Vault()
@@ -202,6 +215,7 @@ def cmd_narrative_draft(argv: list[str]) -> dict:
         run_faithfulness=args.faithfulness or args.annotate_inferred,
         judge_model=args.judge_model,
         annotate_inferred=args.annotate_inferred,
+        ingest_source=not args.no_ingest_source,
     )
 
 
@@ -257,11 +271,57 @@ def cmd_card_draft(argv: list[str]) -> dict:
     return mod_card_draft.draft_cards(vault, args.slug, model=args.model)
 
 
+def cmd_derivation_scan(argv: list[str]) -> dict:
+    p = argparse.ArgumentParser(prog="dispatcher.py derivation-scan")
+    p.add_argument("source", help="path to source md (or source slug already in vault)")
+    p.add_argument("--anchor", default=None, help="narrative slug to anchor targets to")
+    p.add_argument("--model", default=None, help="LLM model override (default: sonnet)")
+    p.add_argument("--vault", default=None)
+    args = p.parse_args(argv)
+    vault = Vault(root=args.vault) if args.vault else Vault()
+    return mod_derivation_scan.scan(
+        vault, args.source, anchor=args.anchor, model=args.model
+    )
+
+
+def cmd_derivation_draft(argv: list[str]) -> dict:
+    p = argparse.ArgumentParser(prog="dispatcher.py derivation-draft")
+    p.add_argument("source", help="path to source md (or source slug already in vault)")
+    p.add_argument("--slug", required=True, help="output derivation slug")
+    p.add_argument("--goal", required=True, help="the result to derive (free text)")
+    p.add_argument("--anchor", default=None, help="narrative slug for subgoal structure")
+    p.add_argument("--model", default=None, help="generator model (default: opus)")
+    p.add_argument("--judge-model", default=None, dest="judge_model",
+                   help="verification judge model (default: sonnet — a DIFFERENT "
+                        "model from the opus generator, to avoid self-preference bias)")
+    p.add_argument("--no-verify", action="store_true",
+                   help="skip judge verification (trust generator's self-reported "
+                        "grounding; not recommended for gap-tier derivations)")
+    p.add_argument("--vault", default=None)
+    args = p.parse_args(argv)
+    vault = Vault(root=args.vault) if args.vault else Vault()
+    return mod_derivation_draft.draft(
+        vault, args.source, slug=args.slug, anchor=args.anchor, goal=args.goal,
+        model=args.model, judge_model=args.judge_model, verify=not args.no_verify,
+    )
+
+
+def cmd_derivations(argv: list[str]) -> dict:
+    p = argparse.ArgumentParser(prog="dispatcher.py derivations")
+    p.add_argument("--vault", default=None)
+    args = p.parse_args(argv)
+    vault = Vault(root=args.vault) if args.vault else Vault()
+    return mod_derivation.derivations_summary(vault)
+
+
 COMMANDS = {
     "ingest": cmd_ingest,
     "card-add": cmd_card_add,
     "card-draft": cmd_card_draft,
     "cards": cmd_cards,
+    "derivation-scan": cmd_derivation_scan,
+    "derivation-draft": cmd_derivation_draft,
+    "derivations": cmd_derivations,
     "status": cmd_status,
     "lint": cmd_lint,
     "pillars": cmd_pillars,

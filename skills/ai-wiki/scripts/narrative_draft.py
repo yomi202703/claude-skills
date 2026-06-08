@@ -16,6 +16,7 @@ from typing import Any
 
 import coverage_qa
 import faithfulness as faithfulness_mod
+import ingest as ingest_mod
 import llm
 import narrative
 from vault import Page, Vault, slugify
@@ -69,6 +70,8 @@ class DraftReport:
     total_cost_usd: float
     errors: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    preflight: dict = field(default_factory=dict)
+    source_ingested: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -82,6 +85,8 @@ class DraftReport:
             "total_cost_usd": round(self.total_cost_usd, 4),
             "errors": self.errors,
             "warnings": self.warnings,
+            "preflight": self.preflight,
+            "source_ingested": self.source_ingested,
         }
 
 
@@ -236,6 +241,97 @@ def _strip_back_matter(sections: list[Section]) -> list[Section]:
             s.children = _strip_back_matter(s.children)
         out.append(s)
     return out
+
+
+# Slide-deck "tangent" sections that are real content (so NOT auto-dropped like
+# back-matter) but are off-topic relative to the lecture's subject: housekeeping,
+# previous-week Q&A, next-week previews, agenda/break filler. We FLAG these in the
+# pre-flight report so the user can confirm a trim before paying for generation,
+# rather than silently deleting content (lossy). Matched on a title with any
+# leading section number / ■ marker stripped.
+_NOISE_TITLE_RE = re.compile(
+    r"^\s*(?:■\s*)?(?:\d+(?:\.\d+)*\s+)?"
+    r"(?:余談|雑談|前回の?コメント返し|コメント返し|前回の?(?:振り返り|復習)|"
+    r"次回の?予告|次回予告|本日の?アジェンダ|アジェンダ|agenda|"
+    r"中休み|休憩|学科招待|自己紹介|連絡事項|事務連絡|お知らせ)"
+    # allow a trailing descriptor: "余談（ざっくりまとめ）", "次回予告：第6回", etc.
+    r"(?:\s*[（(：:、\-—].*)?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _is_noise_section(title: str | None) -> bool:
+    return bool(_NOISE_TITLE_RE.match(title or ""))
+
+
+def _flatten_sections(sections: list[Section]) -> list[Section]:
+    out: list[Section] = []
+    for s in sections:
+        out.append(s)
+        if s.children:
+            out.extend(_flatten_sections(s.children))
+    return out
+
+
+def source_preflight(
+    sections: list[Section],
+    total_tokens: int,
+    *,
+    heading_normalized: bool,
+) -> tuple[dict, list[str]]:
+    """Cheap (no-LLM) structural quality check of a parsed source.
+
+    Surfaces exactly the failure modes that made lecture 05 stall — flattened /
+    duplicated headings and off-topic tangent sections — so the caller can
+    confirm a trim *before* spending opus tokens on generation. Returns
+    ``(preflight_dict, warnings)``.
+    """
+    flat = _flatten_sections(sections)
+    titled = [s for s in flat if (s.title or "").strip()]
+
+    # Duplicate-title groups (the "■×8 同一タイトル" MinerU artifact). When the
+    # same heading repeats, section boundaries no longer track topic boundaries.
+    counts: dict[str, int] = {}
+    for s in titled:
+        key = (s.title or "").strip()
+        counts[key] = counts.get(key, 0) + 1
+    duplicate_groups = {t: n for t, n in counts.items() if n > 1}
+
+    # Noise (off-topic tangent) sections + their token mass.
+    noise = [s for s in flat if _is_noise_section(s.title)]
+    noise_tokens = sum(s.token_estimate() for s in noise)
+    in_scope_ratio = (
+        round(max(0.0, (total_tokens - noise_tokens)) / total_tokens, 3)
+        if total_tokens else 1.0
+    )
+
+    pf = {
+        "headings_total": len(titled),
+        "duplicate_title_groups": duplicate_groups,
+        "duplicate_heading_count": sum(duplicate_groups.values()),
+        "heading_normalized": heading_normalized,
+        "noise_sections": [(s.title or "").strip() for s in noise],
+        "noise_tokens_estimated": noise_tokens,
+        "in_scope_ratio": in_scope_ratio,
+    }
+
+    warnings: list[str] = []
+    if duplicate_groups:
+        sample = ", ".join(f"{t!r}×{n}" for t, n in list(duplicate_groups.items())[:3])
+        warnings.append(
+            f"preflight: {len(duplicate_groups)} duplicated heading title(s) "
+            f"({sample}) — section boundaries may not track topics; "
+            f"consider de-duplicating headings in the source"
+        )
+    if noise:
+        warnings.append(
+            f"preflight: {len(noise)} off-topic section(s) detected "
+            f"({', '.join(pf['noise_sections'][:5])}) "
+            f"≈{noise_tokens} tok / in-scope {in_scope_ratio:.0%} — "
+            f"these are kept (not auto-dropped); trim them from the source for a "
+            f"cleaner tree and higher coverage"
+        )
+    return pf, warnings
 
 
 def select_strategy(total_tokens: int) -> str:
@@ -830,6 +926,7 @@ def narrative_draft(
     run_faithfulness: bool = False,
     judge_model: str | None = None,
     annotate_inferred: bool = False,
+    ingest_source: bool = True,
 ) -> dict:
     """Generate a narrative tree from a markdown source.
 
@@ -965,6 +1062,15 @@ def narrative_draft(
             "reconstructed heading hierarchy from section numbers "
             "(source had flattened level-1 headings)"
         )
+
+    # Pre-flight: cheap structural quality check (duplicated headings, off-topic
+    # tangent sections, in-scope ratio). Catches the lecture-05 failure mode
+    # before any opus tokens are spent. Always attached; surfaced as warnings.
+    pf, pf_warnings = source_preflight(
+        sections, total_tokens, heading_normalized=heading_normalized
+    )
+    report.preflight = pf
+    report.warnings.extend(pf_warnings)
 
     if dry_run:
         report.warnings.append("dry_run: no LLM calls, no file writes")
@@ -1140,6 +1246,19 @@ def narrative_draft(
                             f"{written_slug}: marked {n_marked} synthesized edge(s) with [~]"
                         )
 
+    # --- Store the source under sources/ (single-source-of-truth) ---
+    # The tree is a working hypothesis; the source it was built from is the
+    # immutable thing to verify against (hard rule #3). Store it idempotently
+    # so re-running on the same file never piles up duplicates. Only when at
+    # least one tree was actually committed.
+    if ingest_source and report.narratives_written:
+        try:
+            ing = ingest_mod.ingest_md_if_new(vault, path, ingested_from="narrative-draft")
+            report.source_ingested = ing
+        except Exception as e:  # never let source archival fail the draft
+            report.source_ingested = {"error": str(e)}
+            report.warnings.append(f"source archival skipped: {e}")
+
     vault.append_log(
         "narrative_draft",
         {
@@ -1150,6 +1269,7 @@ def narrative_draft(
             "errors": len(report.errors),
             "coverage_runs": len(coverage_reports),
             "faithfulness_runs": len(faithfulness_reports),
+            "source_ingested": report.source_ingested.get("slug", "no"),
         },
     )
     out = report.to_dict()

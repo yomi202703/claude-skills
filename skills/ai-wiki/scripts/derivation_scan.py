@@ -1,0 +1,224 @@
+#!/usr/bin/env python3
+"""derivation-scan: source → derivation target manifest (台帳).
+
+Answers "対象はどう設定するか" *without* requiring the source to actually
+contain the derivations. The source is used as a **target detector**, not
+necessarily a step provider:
+
+- A stated result (a numbered formula, a theorem, an estimator) is a derivation
+  target even when its derivation is skipped.
+- Skip markers ("略", "面倒", "補足参照", "it can be shown", "left as an
+  exercise") are not noise — they are the *signal* that flags a high-value,
+  hard-to-derive target the source dodged. We surface those first.
+
+Division of responsibility (mirrors card_draft):
+- **Deterministic** (`detect_skip_lines`): regex skip-marker sweep, pure Python.
+- **LLM** (`_extract_targets`): enumerate stated results worth deriving and
+  whether their steps are present. Python then routes each into a tier.
+
+Output: a manifest markdown at `derivations/_targets/<source-slug>.md` plus a
+JSON summary. Nothing is committed as a spine here — promotion is a separate,
+user-curated step (`derivation-draft`).
+"""
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+
+import llm
+from vault import Vault
+
+# Skip markers: the source admits it is *not* deriving something here.
+# Japanese + English. Used both to flag gap targets and to sanity-check the LLM.
+_SKIP_MARKERS = [
+    "略", "省略", "省く", "面倒", "めんどくさい", "自明", "明らか",
+    "演習", "練習問題", "読者に任せ", "読者の", "補足参照", "補足を参照",
+    "章末", "付録", "参照",
+    "it can be shown", "left as an exercise", "we omit", "omit the proof",
+    "omitted", "trivial", "clearly", "follows immediately", "see ",
+]
+# Cross-source signals: the steps live in *another* document.
+_CROSS_SIGNALS = [
+    "参照", "教科書", "Hansen", "章", "節", "付録", "巻末",
+    "see ", "textbook", "chapter", "appendix",
+]
+_SKIP_RE = re.compile("|".join(re.escape(m) for m in _SKIP_MARKERS))
+
+
+@dataclass
+class Target:
+    result: str
+    result_present: bool
+    steps_present: bool
+    skip_marker: str
+    anchor_section: str
+    note: str = ""
+    tier: str = "gen"
+    confidence: str = "low"
+    route: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "result": self.result,
+            "result_present": self.result_present,
+            "steps_present": self.steps_present,
+            "skip_marker": self.skip_marker,
+            "anchor_section": self.anchor_section,
+            "tier": self.tier,
+            "confidence": self.confidence,
+            "route": self.route,
+            "note": self.note,
+        }
+
+
+@dataclass
+class SkipLine:
+    line_no: int
+    marker: str
+    text: str
+
+
+def detect_skip_lines(body: str) -> list[SkipLine]:
+    """Deterministic sweep for skip markers, with line context."""
+    out: list[SkipLine] = []
+    for i, raw in enumerate(body.splitlines(), start=1):
+        m = _SKIP_RE.search(raw)
+        if m:
+            out.append(SkipLine(line_no=i, marker=m.group(0), text=raw.strip()[:160]))
+    return out
+
+
+def _route(t: Target) -> None:
+    """Assign tier / confidence / route in place (deterministic)."""
+    if t.steps_present:
+        t.tier, t.confidence, t.route = "T1", "high", "harvest (steps in source)"
+        return
+    marker = (t.skip_marker or "").lower()
+    if any(sig.lower() in marker for sig in _CROSS_SIGNALS):
+        t.tier, t.confidence, t.route = "cross", "mid", "cross-source (steps elsewhere)"
+        return
+    t.tier, t.confidence, t.route = "gen", "low", "generate + judge-verify"
+
+
+def _extract_targets(
+    vault: Vault, source_slug: str, source_text: str, *, model: str | None = None,
+) -> tuple[list[Target], float]:
+    result = llm.call_with_template(
+        "derivation_scan",
+        {"source_slug": source_slug, "source_text": source_text},
+        model=model,
+        parse_json=True,
+    )
+    llm.log_call(vault.append_log, "derivation_scan", source_slug, result)
+    targets: list[Target] = []
+    if result.is_error or not isinstance(result.parsed, list):
+        return targets, result.cost_usd
+    for item in result.parsed:
+        if not isinstance(item, dict):
+            continue
+        res = str(item.get("result", "")).strip()
+        if not res:
+            continue
+        t = Target(
+            result=res,
+            result_present=bool(item.get("result_present", True)),
+            steps_present=bool(item.get("steps_present", False)),
+            skip_marker=str(item.get("skip_marker", "")).strip(),
+            anchor_section=str(item.get("anchor_section", "")).strip(),
+            note=str(item.get("note", "")).strip(),
+        )
+        _route(t)
+        targets.append(t)
+    return targets, result.cost_usd
+
+
+def _manifest_markdown(source_slug: str, anchor: str | None,
+                       targets: list[Target], skips: list[SkipLine]) -> str:
+    lines = [
+        f"<!-- auto-generated by dispatcher.py derivation-scan. source: {source_slug} -->",
+        "",
+        f"# Derivation targets — {source_slug}",
+        "",
+        f"_Last updated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC_  ",
+        f"anchor: {('[[' + anchor + ']]') if anchor else '(none)'}",
+        "",
+        "| # | target (result) | result | steps | skip marker | route | tier | conf |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for i, t in enumerate(targets, start=1):
+        r = "✓" if t.result_present else "✗"
+        s = "✓" if t.steps_present else "✗"
+        sk = t.skip_marker or "—"
+        lines.append(
+            f"| {i} | {t.result} | {r} | {s} | {sk} | {t.route} | {t.tier} | {t.confidence} |"
+        )
+    lines += ["", "## skip-marker lines (deterministic sweep)", ""]
+    if skips:
+        for sk in skips:
+            lines.append(f"- L{sk.line_no} `{sk.marker}` — {sk.text}")
+    else:
+        lines.append("_(none found)_")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def scan(
+    vault: Vault, source_path: str, *,
+    anchor: str | None = None, model: str | None = None,
+) -> dict:
+    """Scan a source for derivation targets and write a manifest."""
+    p = Path(source_path)
+    if not p.exists():
+        # also accept a source slug already in the vault
+        page = vault.read("source", source_path)
+        if page is None:
+            return {"ok": False, "error": f"source not found: {source_path}"}
+        source_slug = source_path
+        source_text = page.body
+    else:
+        source_text = p.read_text(encoding="utf-8")
+        source_slug = p.stem
+
+    skips = detect_skip_lines(source_text)
+    targets, cost = _extract_targets(vault, source_slug, source_text, model=model)
+    if not targets:
+        return {
+            "ok": False,
+            "error": "no derivation targets extracted",
+            "skip_lines": len(skips),
+            "cost_usd": round(cost, 4),
+        }
+
+    out_dir = vault.root / "derivations" / "_targets"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{source_slug}.md"
+    out_path.write_text(_manifest_markdown(source_slug, anchor, targets, skips), encoding="utf-8")
+
+    tier_counts: dict[str, int] = {}
+    for t in targets:
+        tier_counts[t.tier] = tier_counts.get(t.tier, 0) + 1
+
+    vault.append_log(
+        "derivation_scan_done",
+        {
+            "source": source_slug,
+            "targets": len(targets),
+            "T1": tier_counts.get("T1", 0),
+            "cross": tier_counts.get("cross", 0),
+            "gen": tier_counts.get("gen", 0),
+            "cost_usd": f"{cost:.4f}",
+        },
+    )
+    return {
+        "ok": True,
+        "source": source_slug,
+        "anchor": anchor,
+        "manifest": str(out_path.relative_to(vault.root)),
+        "targets_total": len(targets),
+        "tier_counts": tier_counts,
+        "skip_lines": len(skips),
+        "targets": [t.to_dict() for t in targets],
+        "cost_usd": round(cost, 4),
+    }

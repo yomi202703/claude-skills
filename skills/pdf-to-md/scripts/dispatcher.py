@@ -222,6 +222,19 @@ def cmd_convert(args) -> dict:
     }
     if bundled is not None:
         result["bundled_from_images"] = len(bundled)
+
+    # Layout-aware heading reconstruction: turn MinerU's flat slide-deck `#`
+    # output into a proper `#` doc-title + `##` sections, demoting mis-tagged
+    # body lines and collapsing repeated slide titles. No-op for genuinely
+    # hierarchical PDFs. Original markdown is preserved as `<stem>.raw.md`.
+    if md_path and proc.returncode == 0 and not getattr(args, "no_restructure", False):
+        try:
+            import restructure  # lazy: only needed on success
+
+            result["restructure"] = restructure.restructure_md_file(md_path)
+        except Exception as e:  # never let post-processing fail the conversion
+            result["restructure"] = {"applied": False, "reason": f"error: {e}"}
+
     return result
 
 
@@ -249,6 +262,8 @@ def main() -> None:
     sp.add_argument("--lang", default="japan", help="OCR language hint")
     sp.add_argument("--backend", default="hybrid-auto-engine",
                     help="pipeline (fast, ~85%%) / hybrid-auto-engine (default, ~95%%) / vlm-auto-engine")
+    sp.add_argument("--no-restructure", action="store_true",
+                    help="skip layout-aware heading reconstruction (keep MinerU's raw flat headings)")
     sp.set_defaults(func=cmd_convert)
 
     args = p.parse_args()

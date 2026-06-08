@@ -33,13 +33,14 @@ from pathlib import Path
 DEFAULT_VAULT = Path(os.environ.get("AI_WIKI_ROOT", Path.home() / "ai-wiki"))
 
 SUBDIRS = ("narratives", "sources")
-OPTIONAL_SUBDIRS = ("notes",)  # created lazily
+OPTIONAL_SUBDIRS = ("notes", "derivations")  # created lazily
 
-PAGE_KINDS = ("narrative", "source", "note")
+PAGE_KINDS = ("narrative", "source", "note", "derivation")
 _KIND_TO_SUBDIR = {
     "narrative": "narratives",
     "source": "sources",
     "note": "notes",
+    "derivation": "derivations",
 }
 
 

@@ -185,3 +185,36 @@ def ingest(vault: Vault, source: str, **opts) -> dict:
     else:  # pragma: no cover
         raise ValueError(f"unsupported kind: {kind}")
     return {"source": source, "slug": page.slug, "kind": kind, "stage": "raw"}
+
+
+def find_existing_md_source(vault: Vault, path: str | Path) -> str | None:
+    """Return the slug of an already-ingested source page that came from the
+    same file (matched by absolute ``original_path``), else None.
+
+    Lets callers ingest idempotently — re-running narrative-draft on a source
+    that is already in ``sources/`` must not pile up duplicate copies. Matching
+    is on the resolved original path stored in the source page's frontmatter.
+    """
+    target = str(Path(path).expanduser().resolve())
+    for slug in vault.list_pages("source"):
+        page = vault.read("source", slug)
+        if page is None:
+            continue
+        op = page.meta.get("original_path")
+        if op and str(Path(str(op)).expanduser().resolve()) == target:
+            return slug
+    return None
+
+
+def ingest_md_if_new(vault: Vault, path: str | Path, *, ingested_from: str = "manual") -> dict:
+    """Idempotently store a local ``.md`` into ``sources/``.
+
+    Returns ``{"slug": <slug>, "reused": bool}``. If a source page already
+    records the same ``original_path``, no new page is written and the existing
+    slug is returned with ``reused=True``.
+    """
+    existing = find_existing_md_source(vault, path)
+    if existing is not None:
+        return {"slug": existing, "reused": True}
+    page = stage1_md_path(vault, str(path), ingested_from=ingested_from)
+    return {"slug": page.slug, "reused": False}

@@ -37,7 +37,8 @@ def test_v5_no_reps_or_ignore_aux(vault: Vault):
 
 
 def test_v5_removed_kinds_rejected(vault: Vault):
-    assert PAGE_KINDS == ("narrative", "source", "note")
+    # derivation (procedural-knowledge layer) added 2026-06; old kinds stay gone
+    assert PAGE_KINDS == ("narrative", "source", "note", "derivation")
     with pytest.raises(ValueError, match="unknown page kind"):
         vault.exists("concept", "x")
     with pytest.raises(ValueError, match="unknown page kind"):
