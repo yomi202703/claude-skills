@@ -1,6 +1,6 @@
 ---
 name: todo-groom
-description: Read a project's TODO/STATUS/decisions docs yourself and groom them autonomously — merge duplicates, fix priority order, archive completed items, strip redundancy. Inherits the jibun-de stance (no delegation, no grep-only conclusions, read in full).
+description: Read a project's TODO/STATUS/decisions docs yourself and groom them autonomously — merge duplicates, fix priority order, archive completed items, strip redundancy. 
 ---
 
 This task grooms a documentation set by hand, end to end. No delegation, no shortcuts. Do not stop to ask for confirmation. But never drop information.
