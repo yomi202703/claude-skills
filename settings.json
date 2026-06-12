@@ -18,10 +18,8 @@
     "convo-md": "off",
     "pdf-to-md": "name-only",
     "deadcode": "name-only",
-    "ai-pipeline-audit": "name-only",
     "ai-wiki": "name-only",
     "xlsx-router": "name-only",
-    "gemma-worker": "name-only",
     "xlsx": "off",
     "pptx": "off",
     "docx": "off",
@@ -42,10 +40,6 @@
           {
             "type": "command",
             "command": "/Users/ivymee/Projects/ai-wiki-skill/_dev/hook_check.sh"
-          },
-          {
-            "type": "command",
-            "command": "/Users/ivymee/.claude/skills/gemma-worker/_dev/hook_check.sh"
           }
         ]
       }
