@@ -8,11 +8,14 @@
     "simplify": "off",
     "fewer-permission-prompts": "off",
     "schedule": "off",
-    "claude-api": "name-only",
+    "claude-api": "off",
     "code-consistency": "name-only",
-    "deep": "name-only",
+    "deep": "off",
     "deep-strict": "name-only",
-    "convo-md": "name-only",
+    "deep-research": "off",
+    "redeploy": "off",
+    "update-customer": "off",
+    "convo-md": "off",
     "pdf-to-md": "name-only",
     "deadcode": "name-only",
     "ai-pipeline-audit": "name-only",
@@ -48,11 +51,20 @@
       }
     ]
   },
+  "statusLine": {
+    "type": "command",
+    "command": "/Users/ivymee/.claude/statusline.sh"
+  },
   "enabledPlugins": {
     "pyright-lsp@claude-plugins-official": true,
     "anthropic-skills": false
   },
-  "effortLevel": "medium",
+  "spinnerTipsEnabled": false,
+  "effortLevel": "high",
+  "awaySummaryEnabled": false,
   "autoMemoryEnabled": false,
+  "showThinkingSummaries": false,
+  "skipWorkflowUsageWarning": true,
+  "showTurnDuration": false,
   "skipAutoPermissionPrompt": true
 }
