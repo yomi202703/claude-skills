@@ -10,6 +10,7 @@
 !/commands/
 !/output-styles/
 !/settings.json
+!/CLAUDE.md
 
 # Inside the allowed dirs, drop noisy files.
 **/.DS_Store
