@@ -86,7 +86,9 @@ domain-agnostic。判定固有部は judge-loop が置き、CLAUDE.md と 成果
                                   review-server 診断モードが捕捉。GT(verdict)とも台帳(ADR)とも別物
   outputs/<unit>/              ← 判定結果(judge と review_server が読む)
   review_server/               ← review-server template の実体(contract 参照 / data.py / snapshot / inbox)
-  eval/                        ← P3 K-run / flutter / 分布diff ハーネス
+  eval/                        ← P3 ハーネス(K-run/flutter/分布diff・測定計器であって本番経路でない)
+    run_ledger.*               ← run 結果の恒久記録(version stamp judge/prompt/contract/criterion・drift%・反転ケース・noise/regression/improvement)
+    runs/                      ← raw run(剪定: 直近N＋ベースライン＋境界のみ・剪定内容は ledger に1行記録)
   成果物/                      ← claude-md が雛形生成・global 統治
     STATUS.md  TODO.md
     decisions/{<axis>.md, 横断.md, README.md}
@@ -155,6 +157,9 @@ domain-agnostic。判定固有部は judge-loop が置き、CLAUDE.md と 成果
   - 効かないこと(授業料): 多数決(votes)は境界FPを消さず入れ替えるだけ(認知06-18) / ただし votes は faint な本物の recall 安定には効く(境界精度≠recall=道具が違う) /
     再現ハーネスは測定・診断の計器で production 経路でない(認知 production=votes1・俯瞰計器の flutter と共有)。
   - grill hook: production judge のモデル選定(コスト/速度/精度) / K と votes の有無 / 安全側の向き(ドメイン依存・最重要・焼き込まない=認知は見逃し>誤フラグ)。
+  - run-ledger(記録の第5型・恒久): 全 raw run の保持は嵩んで限界=2層に割る。run-ledger=1 run-set 1エントリの恒久・追記オンリー{時刻・version stamp(judge/prompt/contract/criterion)・K・テストした変更・結果(noise/regression/improvement)・drift%・反転ケース＋方向・raw 参照}。raw runs=直近N＋現ベースライン＋人手キュー中の境界のみ保持・剪定し剪定内容を ledger に1行(沈黙の切り捨て禁止)。住所 eval/(run_ledger 恒久＋runs/ 剪定)。
+    意義: drift を どの版変更に帰属させるか は GT 側 version(S6)＋run 側 version(ここ)の両方で初めて閉じる=幻のリグレッション殺し(G3/G9)の実体。decisions(ADR)/gt(verdict)/spike(単位反応)/outputs(機械判定) とは別の第5記録。
+    how-to: ハーネスは judge-loop 自前の唯一コード。設計・run-ledger format は本節が骨子・実 template/code は deferred(6章)。
 - P4 基準を詰めるループ（**確定**）:
   - ゲート: carve-out を足すたび full resweep＋俯瞰(G5・load敏感=規制562420) /
     基準はオーナー反応から引き出す(原因3) / 同一サンプルで追いチューニングしない・holdout/新規で汎化(G9) /
@@ -209,7 +214,8 @@ P0〜P4 は実史では分離せず螺旋だった。解＝「単位スパイク
 
 次回やること(大掛かりゆえ deferred・今回は記録のみ):
 - 検査IDE = review-server スキルとして起こし済(2026-06-21・S1–S12 のゲート・診断/GT作成/評価の3モード・1サーバー設定駆動)。残るは実装雛形(コード)で、律速ピース。
-- P0.0 のディレクトリ構成規約: xlsx 置き場 / pdf 置き場 / 処理後の置き場 を所定の場所に固定。
+- ~~P0.0 のディレクトリ構成規約~~ → 済(3.5 章 canonical tree: _data/{raw,processed}・contract・gt/<tier>・spike・outputs・review_server・eval・成果物)。
+- P3 ハーネス＋run-ledger の実 template/code。[deferred・発火: 別ドメインで再現性測定が要るとき] 設計と run-ledger format は 5章 P3 にあり・コード化は review-server template と同様に後回し。
 - P0.0 取り込みの合成: xlsx → /xlsx-router ・ pdf → /pdf-to-md で前処理し、処理後を所定の場所へ(P2→review-server と同型の skill 合成)。
 - アクセス層スキル(MCP・3モード SQL/PDF/RAG・文字起こし意味検索＋統一アクセス口)。[deferred・発火: 別ドメイン着手で源泉アクセスが要るとき] 2026-06 スキル監査で「judge-loop の唯一の prerequisite 穴(review-server 型のインフラ雛形スキル)」と確認。Pre-P0.0 が誘導する空ポインタ。
 - 全体 pressure-test(本方法論は n=1=あかつき由来ゆえ・別ドメインで各ゲートを当てて overfit を検出)。
