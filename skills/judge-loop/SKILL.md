@@ -1,0 +1,62 @@
+---
+name: judge-loop
+description: A domain-agnostic standard for establishing (or restructuring) the development loop of ANY no-ground-truth judgment/scoring/extraction system — where the correct answer does not pre-exist, the criteria are tacit and elicited from a domain owner one example at a time, experts may disagree, and an LLM does it at scale. NOT limited to any field: applies to content moderation, policy-adherence, clinical/risk triage, concern detection, candidate/essay/performance evaluation, sentiment/quality scoring, any "is this appropriate / concerning / a violation" call. This is a THIN orchestrator: it detects the phase, enforces the always-on gates, routes to the sub-skills that do the work, names each phase's output, and surfaces the next owner decision — it does not itself give domain-specific instructions.
+---
+
+## Premises (standing assumptions)
+- Real/human GT arrives LATE. The loop must run end-to-end BEFORE it exists. Stand the server up early; GT accrues incrementally through it — never wait for, or load, a finished GT. In diagnostic mode the developer saves correct/incorrect against the proposer (Claude) GT (provenance=anchored → silver); blind reviewers later produce independent GT (gold). This is WHY the server precedes the GT.
+- Production judge = a local/open mid-size model (Gemma-class) served over an API. This drives G2 (deterministic-first), the K-run/flutter harness (the model is non-deterministic, ~9% drift even at temp 0), and gemma-prompt. Which exact model is a grill hook; that it is Gemma-class/local/API is the assumption.
+- Day-1 scaffold (do this before P0.0). Set up the directory layout (canonical tree in docs/方法論) and working docs per global CLAUDE.md governance, adopted aggressively: 成果物/ (TODO P0–P2 + STATUS + decisions/ append-only topic-split + archive/), source dirs, outputs/, contract/, gt/<tier>, spike/ (round-indexed reaction log), .env.example (committed; Gemma API config) + .gitignore (.env / _data / outputs / snapshots). The judge reads its Gemma API connection from .env (gitignored); gemma-prompt stays prompt-only.
+
+## Every turn
+1. Detect the phase (P0.0 → P0u → P1 → P2 → P3 → P4; spiral, not march — revisit on owner reactions).
+2. Enforce the gates below. Refuse opt-out.
+3. Route the work to the owning sub-skill. Do not re-implement it here.
+4. Name the phase output and where it lives.
+5. Fire the phase's grill hook for the next owner decision. Do not pre-decide it.
+
+## Gates vs choices
+- GATES (G1–G9): always-on, non-negotiable. Never let the owner opt out.
+- CHOICES: cardinality, unit granularity, GT mechanism, judge model, safe-direction, precision/recall. Never pre-decide. Fire a grill hook: option space + each option's cost + your recommendation; the owner decides.
+- Do not turn every gate into a choice.
+- Gates earn their place by induction — they hold across domains, grounded in concrete cases, not deduced from theory. A rule that was right in one domain (e.g. akatsuki cognition's no-diagnosis binary) is a CHOICE for the next. Look at each domain's reality before applying any prescription.
+
+## Gates (enforce throughout)
+- G1 Don't inherit the judgment unit. Derive it from the goal.
+- G2 Deterministic-first architecture. Code does everything deterministic (evidence resolution, dates, number derivation); the LLM is reserved for the meaning residual. Confidence/scores in the output contract are derived by code from the model's categories or structure — never self-reported by the model. (Prompt-side mechanics — emit categories not numbers, no unused gradations — belong to gemma-prompt.)
+- G3 The production judge is not the reward. Never tune its prompt to climb its own agreement score; never clone the proposer (Claude) or an LLM-evaluator. Measure agreement on a holdout against owner-ratified anchors (measurement, not a target). The only reward signal is owner reactions — in a no-GT domain no judge is an oracle.
+- G4 Match the claim to reality: assert only what the evidence and the model can actually support, and cite that evidence so it stays inspectable. How assertive the form is — diagnosis vs hypothesis, 断定, binary vs graded, isolation — is a P1 choice decided by the domain's reality (stakes + what is knowable), never inherited from another domain.
+- G5 Any criteria change (especially a carve-out) → full re-sweep + bird's-eye pass to catch collateral breakage of OTHER cases (load-sensitive models break reasoning cases silently — mechanism is a gemma-prompt premise). Detection only; the remedy is P4 (split a minimal-constraint screen, don't pile clauses).
+- G6 Route every grill-hook rejection and owner ratification to the ledger with its reason, so forks are not re-litigated or re-proposed. (The ledger structure itself is claude-md / global governance; this gate is the obligation to feed it the choice machinery's outcomes.)
+- G7 Build the measurement/diagnostic instrument early (it lets the spiral converge); defer all OTHER cross-cutting / delivery infra until the axes stabilize (P0u SETTLE). The early instrument is the single config-driven review server (S1), not a sprawl of viewers.
+- G8 Suspect the data before blaming a criterion: false positives → check the evidence channel; omissions / masking → check authority coverage (RAG / systematic cross-walk of the source). (Atomic-splitting bundled criteria is a P4 / gemma-prompt technique, not a gate.)
+- G9 No overfitting. Validity ≠ detectability — never select axes/criteria because they are reproducible or easy to measure (street-light bias). Validate generalization on a holdout / fresh owner reactions; never re-tune on the sample you validate on. (Developer-side enactment: review-server S12 holdout firewall.)
+
+## Phase routing
+Format — PRODUCE · ROUTE · GRILL.
+
+- Scaffold (day 1, before P0.0) · the judgment tree (sources / per-axis modules / single contract source / tiered GT store / outputs / review_server / eval harness) + the memory layer (CLAUDE.md + 成果物/ TODO·STATUS·decisions·archive) · judge-loop owns the judgment tree (canonical tree in docs/方法論); routes CLAUDE.md + governance docs to claude-md · —.
+- Pre-P0.0 Access layer · one MCP-style access layer over 3 modes (structured→SQL · authority PDF→page-addressable read · transcripts→RAG for discovery, whole-read when judging) · grill-me · access-layer design.
+- P0.0 Source inventory · source map typed by role (tags e.g. evidence/authority/exemplar/meta — illustrative, not exhaustive — + where each feeds) + authority-coverage note (covered → derive / uncovered → spiral = D2/D3 input). Inventory + typing is the deliverable; full ingest is deferred to judging time · xlsx-router, pdf-to-md, then the access layer · —.
+- P0u Unit discovery (spiral; the single most expensive phase, before any GT/criteria investment) · unit candidates + spike distributions + a round-indexed, diagnosis-tagged owner-reaction log (the substrate SETTLE is computed from) + committed-unit record · unit-spike loop is skill-native (see Cores); review-server diagnostic mode captures the reaction log and computes SETTLE (G7 exception) · unit granularity; D2/D3 — definitional → derive (refuse inheritance) / emergent → straight to spiral, lean emergent when unsure.
+- P1 Output contract (fix early — after P0u SETTLE — change rarely) · one single-source versioned contract. Gates: cite evidence (inspectable) + no overclaim (G4). Choices (decided by the domain's reality, not inherited): evidence pointer form; confidence presence & form (code-derived per G2); isolation form; framing (diagnosis vs hypothesis, 断定, human-routing); cardinality {binary/N-level/score+threshold} (standing rec: binary screening, strength kept as evidence) · grill-me.
+- P2 Human loop — rough GT + continuous human back-stage (the human審級 runs continuously here, not as a later "last station"; two modes of ONE server, stood up early) · running server (diagnostic + GT-creation modes) + append-only tiered disposable GT store · review-server (owns S1–S12) · GT protocol per campaign (blind/ratify/synthetic); GT-generation mechanism. Surviving gates: GT never enters the judging prompt; never tune the judge to match the proposer/GT (G3/G9); owner is authority.
+- P3 Production judge + reproducibility (local/open Gemma-class judge via API) · judge config + K-run/flutter/distribution-diff harness + variance report · gemma-prompt (judge prompt) · judge model; K & votes; SAFE-DIRECTION.
+- P4 Criteria-tightening (only after the unit settles) · atomic criteria ledger (every rejected criterion + reason, G6) + carve-out/re-sweep log · grill-me · precision/recall lean. Atomic-split bundled criteria first (here / via gemma-prompt). Rule: tightening breaks a real case → split a separate minimal-constraint screen, do not add a clause; undrawable lines fall to the human queue.
+- GT-established (steady-state, once gold/holdout accumulate) · regression eval vs frozen gold + holdout milestone checks + GT-staleness queue · review-server evaluation mode (W6) · eval metric; milestone cadence; staleness threshold. Not a finish line; S12 holdout firewall must already be in place.
+
+## Cores (procedures, keep inline)
+- Unit-spike loop: place a candidate unit → produce output on enough cases to see a DISTRIBUTION (a spike, not a full build) → owner reacts to concrete output → diagnose by bird's-eye, not per-reaction → unit problem: update unit, re-spike; criteria problem: log for P4, don't touch the unit.
+- Bird's-eye diagnosis: FP sharing a structure / wrong grouping → UNIT; scattered rule-edges → CRITERIA; flips across runs → NOISE. When ambiguous, lean unit-side.
+- SETTLE: computed from the diagnosis-tagged reaction log — K consecutive rounds with no unit-keying tag (criteria-only) → commit the unit; only then invest in GT and criteria.
+- Phantom regression: a change that looks like a regression → split noise from real difference first; round boundary cases to the SAFE side.
+
+## Composition
+- Every fork → grill-me.
+- Judge prompt (author/shorten) → gemma-prompt.
+- The one shared review server (diagnostic + GT-creation + evaluation modes; owns S1–S12) → review-server.
+- Repo memory: CLAUDE.md + working-doc governance (成果物/) → claude-md (Scaffold step).
+- This skill adds only: phase sequencing, gate enforcement, grill-hook firing, and the K-run/flutter/distribution-diff harness.
+
+## Ledger
+The ledger structure (成果物/decisions, append-only) is claude-md / global governance. Per G6, route the choice machinery's outcomes here — owner ratifications, and every dropped/rejected option with its reason — so forks are not re-litigated.

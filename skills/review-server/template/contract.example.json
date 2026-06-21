@@ -1,0 +1,29 @@
+{
+  "_comment": "Single contract source (S2). The judge AND the server both read this. Change vocabulary here only — never hard-code it in the server. Bump the matching version when you change a section.",
+  "version": {
+    "contract": "v1",
+    "unit": "v1",
+    "criterion": "v1",
+    "judge": "v1"
+  },
+  "unit": {
+    "id_fields": ["item_id"],
+    "label": "item",
+    "_comment": "Review unit follows the judgment unit (S7). To re-key (e.g. per-item -> cross-item cluster), change id_fields and bump version.unit."
+  },
+  "evidence_pointer": "idx",
+  "axes": [
+    {
+      "key": "concern",
+      "label": "Concern",
+      "cardinality": "binary",
+      "vocabulary": ["flag", "none"],
+      "isolation": "screening",
+      "_comment": "Actionable flag is binary screening; strength stays as evidence (P1 standing recommendation)."
+    }
+  ],
+  "roles": {
+    "developer": { "needs_password": true },
+    "reviewer": { "needs_password": false }
+  }
+}
