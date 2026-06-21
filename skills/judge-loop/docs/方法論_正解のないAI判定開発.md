@@ -75,7 +75,8 @@ domain-agnostic。判定固有部は judge-loop が置き、CLAUDE.md と 成果
     processed/                 ← xlsx-router / pdf-to-md の出力先
   access/                      ← Pre-P0.0 統一アクセス層(MCP)
   contract/                    ← P1 単一契約ソース(S2): 軸/語彙/単位/version
-  <axis-1>/ … <axis-N>/        ← 判定軸ごと1モジュール
+  factlayer/                   ← 中立な共有ファクト抽出(1回抽出→全 judge が消費・ロール中立=違反探しでない・あかつき call_facts)
+  <axis-1>/ … <axis-N>/        ← 判定軸ごと1モジュール(factlayer を入力に)
     judge.py                   ← 決定論 + Gemma 呼び(local API)
     prompts/                   ← gemma-prompt の出力
     tests/
@@ -223,3 +224,22 @@ P0〜P4 は実史では分離せず螺旋だった。解＝「単位スパイク
 use-time grill hook で決める(設計時に焼き込まない): GT 生成機構 / cardinality / 安全側の向き / precision-recall の向き。
 
 留保: 「定義型/創発型の出し分け」は基準に効かない(基準は常に螺旋)。効くのはアーキ層のみ。
+
+---
+
+## 7. decisions 全読の追加蒸留（2026-06-21・乗換/callfacts銘柄/横断/規制遵守 全文 jibun-de）
+n=1(あかつき)由来ゆえ別ドメインで pressure-test が要るのは留保のまま。出典は各 decisions トピック。
+
+- N1 verdict 状態の taxonomy(→P1): no-GT スクリーニングはほぼ必ず4状態を区別する。非該当(ルール非適用)≠○遵守 / 判定不能(決め手のデータがこのチャネルに無い=省略可否は接触履歴=録音外)≠△要確認(聴けば人が決められる) / 内部 raw×(監査真値) vs 表示 verdict(判定不能) / 無フラグを“確認済”と描かない。出典=規制 説明義務2値+判定不能・NISA短期売却・norikae・「非該当≠遵守」(乗換/横断 cross-cutting)。
+- N2 基準のルーティング taxonomy(→P4): 締める前に各候補基準を所有者へ振り分ける。是非/合理性=決定論 / 根拠の明確さ=承認記録軸(録音外) / 具体事実=音声 / 顧客理解=主体性委譲 / 総論・傘=載せない / 推奨=判定しない / 接触履歴でしか確認できない=記録系 / 書面=書面軸 / 同名異義=別単位。多くの“基準”はこの judge の仕事でない。義務/推奨は審査者の価値判断でなく原典の体裁(理解確認の箱の内外・「必ず」・「勧誘非勧誘問わず」)で切る(S2)。出典=規制遵守 全体(NK/TS/GK/GB/SB/IP の screen-by-screen)。
+- N3 中立な共有ファクト層(→Premises/tree factlayer): 多軸が同じ入力を判定するとき、共有事実を1回だけ中立ロール(記録担当・違反探しでない=過剰立てバイアス回避)で抽出し全 judge が消費。違反判定は下流。出典=callfacts銘柄(call_facts ロール中立化・direction/solicit/phase/needs_record の共有抽出)。
+- N4 LLM 抽出を決定論真値で錨る(→G8): 抽出カウントを真値(例 trades 約定数)に錨り過剰を検出 / 実体解決は単一 read 層チョークポイント・curated のみ(loose global は誤マージ)・原表記を provenance 保持・canon 後 dedup / モデルの「不明」文字列を null 正規化 / 窓は広いと別物を巻き込む→同日クラスタで錨る。出典=横断(二重受注 dedup・同日クラスタ)・callfacts銘柄(canon チョークポイント・_clean_meigara・curated alias)。
+- N5 1つの体制所見 ≠ N件の per-item フラグ(→Cores): 多数のフラグが1つの系統要因に帰すなら集約所見1つにする。出典=横断 onsei(「企業が接触履歴を書いていない=495件」は per-call 495 でなく体制所見1)。
+- S1 load=制約の総量(→G5): 推論型ケースは無関係な一文を足しただけでも「該当なし」に転落。意味的干渉でなく制約総量がモデル容量を食う・語彙的ケースは生存。最小制約の単機能スクリーンへ分離。出典=規制 06-20c 追補(562420 金銭的便宜の統制実験)。
+- S3 A/A 床＋replication(→P3/Cores): 単発 A/B は ~9% 非決定で汚染。A/A(同一条件2回)でノイズ床を測ってから replication(N回・発火率)で符号確認。出典=規制 C-032 A/B・scope_guard replication。
+- S4 doctor/preflight(→review-server S10): 未検証 handoff は症状が毎回違う。受領側の環境＋データ構造を本物のパーサで点検し go/no-go を名指しする preflight を配る。出典=横断 06-20 doctor.py・_data 一本化。
+- 確認(既収録): pointwise→多数派 laziness/listwise・reason先出し(gemma-prompt)・prompt-merge は入力再送削減と制約同居が不可分(gemma-prompt/G5)・プロンプト過学習=具体フレーズを型へ・few-shot は eval 写し不可(gemma-prompt/global)。
+- N6 判定の shape/極性は軸ごとに違う(→gemma-prompt/軸別プロンプト): 説明義務=completeness(在れば○) / 禁止発言=presence の不在(無ければ○・極性が逆) / 適合性=profile matching。1枚プロンプトに check_type 分岐で押し込むと Gemma が極性を取り違える=軸(shape)ごとにプロンプトを分ける。出典=archive 2026-06-09 軸別プロンプト化。
+- S5 非決定の2源を分ける(→Cores/P3): モデルノイズ(temp=0でも logits 非再現=A/A 床で測る)と 真の境界(507821「失念 vs 言い間違い」の真の50/50)。前者は計器で殺す・後者はバグでなく人手キューへ。出典=archive 認知 severe 非決定性の究明。
+- 確認(既収録の追加裏取り): 接触/交付/記載のチャネル分割=N2 の起点(archive チャネル分割・音声可174/一部のみ43)・trades=真値の機械照合(reconcile_trades)=N4・holdout 41→80%=G9/G10・combined>two-stage(適用と遵守は同証拠ゆえ分離は情報を捨てる)=gemma-prompt。努力義務(〜に努める)/抽象原則は判定不能 or 要確認隔離=N1/N2 の sub。
+- 被覆(正直): summary_log(archive の digest・503行)＋全 topic decisions＋git log(332コミット)を自分で読了。raw archive(5471行)は文脈に乗らず逐行未読=ただし内容は summary_log に digest 済を確認。残リスクは低だが非ゼロ。

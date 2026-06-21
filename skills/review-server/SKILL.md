@@ -23,7 +23,7 @@ Premise: real/human GT arrives LATE. The server exists so GT accrues incremental
 - S7 Review unit follows the judgment unit. Review unit (per-item / cross-item cluster / event) is config; it reconfigures when the unit moves in the spiral.
 - S8 Reads are side-effect-free. Viewing never mutates state. State changes only on explicit write.
 - S9 One ingestion path. Exactly one way data enters. No second manual-import path.
-- S10 One verified distribution command, provenance always visible. The package excludes the aggregator's answer DB, others' submissions, caches, internal docs. The UI always shows live-vs-snapshot + timestamp. Manage ports/processes so no stale process serves old UI.
+- S10 One verified distribution command, provenance always visible. The package excludes the aggregator's answer DB, others' submissions, caches, internal docs. The UI always shows live-vs-snapshot + timestamp. Manage ports/processes so no stale process serves old UI. Ship a preflight (a "doctor") that validates the receiving side with the REAL parser — environment + data STRUCTURE, go/no-go by name; an unverified handoff fails with a different symptom every time.
 - S11 Evidence-confront, not agree-toggle. The human confronts the cited evidence; the verdict is captured against evidence pointers.
 - S12 Once GT exists, evaluation is measurement, never a target. Never tune the judge to climb agreement with gold/holdout. Holdout is sequestered: hidden during development, surfaced only at milestones, every access logged.
 
