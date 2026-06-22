@@ -1,0 +1,19 @@
+マスタ:
+  skipped: huge→SQLite path
+対象:
+  faithful: 1809/1809
+  sha256_16: 9ea68e38f6a150eb
+  spans: 0
+  tr: 516
+対象_無条件:
+  skipped: huge→SQLite path
+対象外_無条件:
+  faithful: 4387/4387
+  sha256_16: 5b7674d115878d93
+  spans: 0
+  tr: 1258
+対象対象外:
+  faithful: 2794/2794
+  sha256_16: c01c8f15346770a3
+  spans: 0
+  tr: 785

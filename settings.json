@@ -54,7 +54,7 @@
     "anthropic-skills": false
   },
   "spinnerTipsEnabled": false,
-  "effortLevel": "high",
+  "effortLevel": "medium",
   "awaySummaryEnabled": false,
   "autoMemoryEnabled": false,
   "showThinkingSummaries": false,

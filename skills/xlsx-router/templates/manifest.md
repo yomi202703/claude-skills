@@ -6,12 +6,12 @@
 
 ## Sheets
 
-| シート | 形状 | 規模 (行×列 / Nマージ) | 実ヘッダ行 | パス | 出力ファイル |
-|---|---|---|---|---|---|
-| <sheet1> | structured | 11×21 / 18マージ | 3 | P3 YAML | `<slug1>.yaml` |
-| <sheet2> | db | 18×10 | 1 | P1 Markdown | `<slug2>.md` |
-| <sheet3> | db-large | 3862×11 | 1 | P2 SQLite | `<slug3>.sqlite` |
-| <sheet4> | db-large | 7472×3 | 1 | P2 SQLite | `<slug4>.sqlite` |
+| シート | 規模 (行×列 / Nマージ) | パス | 忠実性 | 出力ファイル |
+|---|---|---|---|---|
+| <sheet1> | 11×21 / 18マージ | html | 187/187 | `<slug1>.html` |
+| <sheet2> | 60×32 / 147マージ | html (図形あり) | 232/232 | `<slug2>.html` |
+| <sheet3> | 3862×11 | sqlite | — | `<slug3>.sqlite` |
+| <sheet4> | 7472×3 | sqlite | — | `<slug4>.sqlite` |
 
 ## Detected relationships (heuristic)
 

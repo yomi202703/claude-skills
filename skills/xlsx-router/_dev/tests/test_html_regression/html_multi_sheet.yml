@@ -1,0 +1,15 @@
+basic_info:
+  faithful: 33/33
+  sha256_16: 079dae0cf9a593a1
+  spans: 0
+  tr: 11
+master_table:
+  faithful: 6003/6003
+  sha256_16: bc6e800f3f580aec
+  spans: 0
+  tr: 2001
+rules_sheet:
+  faithful: 41/41
+  sha256_16: 0e29e2e0bd0f2d81
+  spans: 2
+  tr: 20

@@ -4,9 +4,9 @@ When a workbook has 2+ sheets, process every sheet independently. **Never ask "w
 
 ## Pipeline
 
-1. Classifier assigns a path (P1-P5) per sheet — just execute each.
+1. `xlsx_to_html.py` writes the manifest + per-sheet HTML in one call. Act on each sheet's `path` (`html` / `sqlite`) and `suggests_image` flag — just execute each.
 2. Create output directory at `<project>/data/<workbook_slug>/`.
-   - `workbook_slug` = filename (no extension) sanitized: spaces/brackets/slashes → `_`, collapse runs, trim to 64 chars. The classifier already computes this.
+   - `workbook_slug` = filename (no extension) sanitized: spaces/brackets/slashes → `_`, collapse runs, trim to 64 chars. Pass it as the converter's `--out-dir`.
 3. Each sheet's output → `<workbook_slug>/<sheet_slug>.<ext>`.
 4. Always write `_manifest.md` at the workbook folder root (see `manifest.md` template).
 5. Report to user:

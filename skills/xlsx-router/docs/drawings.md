@@ -1,6 +1,6 @@
 # drawings — Tier A (deterministic shape + image extraction)
 
-Triggered when the classifier flags a sheet with `has_drawings: true`
+Triggered when the `xlsx_to_html` manifest reports `has_drawings: true` for a sheet
 (actual shapes / pictures / connectors, not empty `wsDr` shells).
 
 ## What the script does

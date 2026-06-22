@@ -1,63 +1,75 @@
 ---
 name: pdf-to-md
-description: Convert a PDF *or a sequence of page images* (Kindle screenshots, slide photos, scanned pages — png/jpg/webp/heic/tif/bmp) into AI-friendly markdown using MinerU (local VLM, 95%+ accuracy on OmniDocBench, CJK + LaTeX math + markdown tables + figure captions + auto-mermaid). Image input is natural-sorted (`p2 < p10`) and bundled into a PDF first, then converted. Output goes to ~/preprocessed/<stem>/<backend>/<stem>.md with images alongside. Session-lifecycle server: start once at batch begin, stop at batch end — 2nd+ document stays warm in the same session.
+description: Convert a PDF, scanned document, or a sequence of page images/screenshots (Kindle captures, slide photos, scanned manuals — png/jpg/webp/heic/tif/bmp) into faithful, AI-readable markdown. Claude itself is the engine: it reads each page (vision) and transcribes to markdown, using the PDF's text layer as verbatim character ground-truth when present (hybrid) and vision-only OCR otherwise. Long documents are split into page batches processed by transcription subagents and stitched; a char-multiset coverage gate verifies no source content was dropped. Use when asked to convert/ingest/OCR/"markdown-ify" a PDF, manual, scanned doc, or screenshot set — especially Japanese business manuals with headings, clauses, tables, and diagrams. Not for authoring new PDFs.
 ---
 
-# pdf-to-md
+# pdf-to-md (Claude-native)
 
-## Session lifecycle
+Goal: turn a PDF / images into markdown that is faithful to the source AND directly
+readable by an LLM. Claude reads the pages and writes the markdown — no external parser.
+Use the page image for reading order / structure / tables / diagrams; use the text layer
+(when present) as the exact characters, so legal/clause wording is never paraphrased or
+OCR-drifted.
 
-MinerU's VLM takes ~3 min to load. **Start the server before the batch, stop it at the end.** `convert` auto-detects the server via `/tmp/pdf-to-md-server.json` (`mode: warm` if alive, `mode: cold` ad-hoc fallback otherwise).
+## Workflow
 
-## Commands
+1. Prepare (mechanical: render pages, extract text layer, plan batches):
+   ```bash
+   python3 ~/.claude/skills/pdf-to-md/scripts/prepare.py <input...> --out-dir ~/preprocessed
+   ```
+   `<input>` = a `.pdf`, a directory of images, a glob, or image paths. Prints a compact
+   manifest; the full manifest (per-page image+text paths, `born_digital` flags, `outline_hint`,
+   `batches` of ~6 pages) is at `<out_dir>/<stem>/_work/manifest.json`. Read that JSON.
 
-`python3 ~/.claude/skills/pdf-to-md/scripts/dispatcher.py <cmd>`
+2. Transcribe each batch **in order** (Claude is the engine):
+   - Short doc (≤ 8 pages, one batch): transcribe inline yourself.
+   - Longer: for each batch, spawn ONE subagent and pass it the batch's page images + text
+     files + the `outline_hint` + the **last ~20 lines of the previous batch's chunk** + the
+     **current heading stack** (so headings stay consistent across batches). Each subagent
+     writes `<work>/chunks/chunk_<NN>.md` (NN = batch index, zero-padded). Process batches
+     sequentially so each inherits the prior heading state — do not fan out blindly.
 
-| Command | Purpose |
-|---|---|
-| `start-server` | Launch `mineru-api` with VLM preload, wait until ready |
-| `convert <input...>` | Convert; `<input>` is a `.pdf`, a directory of images, a glob, or image paths |
-| `stop-server` | Kill the server |
-| `status` | Server liveness |
+   Transcription contract (give every subagent these rules verbatim):
+   - Read each page image for reading order, layout, headings, lists, tables, diagrams.
+   - When a `text` file is given for the page, it is the GROUND TRUTH for characters:
+     transcribe verbatim, never paraphrase/summarize/"fix"; on conflict trust the text layer.
+   - Judge each page's type (cover / TOC / body / table / figure) and structure accordingly —
+     do not mechanically turn every line into a heading. Headings: `#` doc title (first page
+     only), `##` section, `###` subsection; body as paragraphs; tables as markdown tables;
+     diagrams/flowcharts as a fenced code block preserving the labels verbatim.
+   - Strip running headers/footers/page numbers (repeated page boilerplate).
+   - Preserve clause/article/item numbering exactly.
+   - Continuation: if the batch starts mid-content put `<!-- continues-from-previous -->` at
+     the top; if it ends mid-content put `<!-- continues-to-next -->` at the bottom. Join
+     content split across pages within the batch into one paragraph/list/table.
+   - Never invent content; leave illegible regions out rather than guessing.
 
-### `convert` input rules
+3. Assemble + verify (mechanical):
+   ```bash
+   python3 ~/.claude/skills/pdf-to-md/scripts/assemble.py --manifest <work>/manifest.json
+   ```
+   Stitches chunks in order, drops continuation markers, strips recurring header/footer lines,
+   and runs the faithfulness gate. Writes `<out_dir>/<stem>/<stem>.md`.
 
-- **One `.pdf` path** → converted directly.
-- **Directory / glob / multiple image paths** → natural-sorted, bundled into `~/preprocessed/_pic_bundles/<stem>.pdf` (stem = source dir name, override with `--name`), then converted. Supported: `.png .jpg .jpeg .webp .tif .tiff .bmp .heic`.
+## Faithfulness gate (what assemble guarantees)
 
-Pre-flight for image input: the bundler natural-sorts and the result includes `bundled_from_images: N` — verify N matches the expected page count.
-
-### `convert` flags
-
-`--backend hybrid-auto-engine` (default, ~95% accuracy) / `pipeline` (fast, ~85%) / `vlm-auto-engine`. `--lang japan` default. `--no-restructure` keeps MinerU's raw flat headings (see below). Others via `--help`.
-
-### Heading reconstruction (slide decks)
-
-MinerU tags every slide title as a level-1 `#`, so a presentation PDF comes out with no document-title/section distinction, mis-tagged body lines as headings, and the same slide title repeated across N slides. After a successful convert, a **layout-aware post-pass** (`restructure.py`, no LLM) reads the sibling `<stem>_content_list.json` (`text_level` + `bbox` + `page_idx`) and rebuilds the hierarchy: first slide title → `#` doc title, each page's first heading → `##` section, extra headings on a page → demoted to body, and runs of identical slide titles → one merged section. The original MinerU markdown is preserved as `<stem>.raw.md`; the result's `restructure` field reports `{applied, doc_title, sections_after, demoted_to_body, merged_duplicate_runs}`. It is a **no-op for genuinely hierarchical PDFs** (MinerU already emitting `##`/`###`) and whenever md/JSON headings don't align 1:1 — so it never mangles a well-structured document. Disable with `--no-restructure`.
+- Born-digital (text layer present): char-multiset content coverage of the text layer must be
+  ≥ 99.5% (NFKC, kana/kanji/latin only, position-insensitive — robust to reformatting and 2D
+  figure regrouping). Below that → exit non-zero with the low-coverage pages listed; re-transcribe
+  those batches, don't ship a lossy result.
+- Image-only (no text layer): no ground-truth anchor — coverage is N/A, assurance is softer.
+  For high-stakes image-only docs, spot-re-read a sample of pages and compare.
 
 ## Output
 
-`~/preprocessed/<stem>/<backend>/<stem>.md` (+ `<stem>.raw.md` when restructured) + sibling `images/`. Math = LaTeX, tables = markdown, figures = image refs + `<details>` captions, flowcharts → mermaid.
+`~/preprocessed/<stem>/<stem>.md`. Per-page images and the text layer stay under
+`<stem>/_work/` for re-runs and inspection.
 
-## Examples
+## Scripts
 
-```bash
-# warm server (once per batch)
-python3 ~/.claude/skills/pdf-to-md/scripts/dispatcher.py start-server
+- `prepare.py` — input → per-page PNG + text layer + born-digital flags + batch manifest (entry point)
+- `assemble.py` — stitch chunks + running-header strip + faithfulness gate
+- Transcription itself is done by Claude (you / subagents), not a script.
 
-# regular PDF
-python3 ~/.claude/skills/pdf-to-md/scripts/dispatcher.py convert ~/Downloads/paper.pdf
-
-# folder of Kindle screenshots (auto-bundled)
-python3 ~/.claude/skills/pdf-to-md/scripts/dispatcher.py convert ~/Downloads/kindle_book_xxx
-
-# glob (quote it)
-python3 ~/.claude/skills/pdf-to-md/scripts/dispatcher.py convert "~/Downloads/slides/*.png" --name lecture3
-
-# stop at end of batch
-python3 ~/.claude/skills/pdf-to-md/scripts/dispatcher.py stop-server
-```
-
-macOS Desktop is TCC-protected; copy images to `~/Downloads` or similar first.
-
-Setup notes: `_dev/SETUP.md`.
+Encrypted PDFs with copy/print permission are handled directly (no decryption step needed).
+macOS Desktop is TCC-protected; copy images to `~/Downloads` first if needed.

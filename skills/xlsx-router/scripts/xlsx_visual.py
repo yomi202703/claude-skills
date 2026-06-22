@@ -72,19 +72,27 @@ def xlsx_to_pdf(xlsx_path: Path, out_pdf_dir: Path) -> Path:
 
 
 def pdf_to_pngs(pdf_path: Path, out_dir: Path, dpi: int = 150) -> List[Path]:
-    """Render every PDF page to PNG via PyMuPDF. Returns list of PNG paths."""
-    import fitz
+    """Render every PDF page to PNG via poppler's `pdftoppm` (no Python deps).
+
+    Replaces the former PyMuPDF (fitz) path: that needed a C-extension that is
+    frequently absent (and was missing here). `pdftoppm` ships with poppler and
+    is a stable CLI. Returns PNG paths in reading order, named page_NN.png.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
-    doc = fitz.open(str(pdf_path))
+    prefix = out_dir / "page"
+    subprocess.run(
+        ["pdftoppm", "-png", "-r", str(dpi), str(pdf_path), str(prefix)],
+        check=True, capture_output=True,
+    )
+    # pdftoppm emits page-1.png / page-01.png (zero-padded to page count);
+    # normalize to page_NN.png in reading order.
+    produced = sorted(out_dir.glob("page-*.png"))
     paths: List[Path] = []
-    zoom = dpi / 72.0
-    mtx = fitz.Matrix(zoom, zoom)
-    for i, page in enumerate(doc, start=1):
-        pix = page.get_pixmap(matrix=mtx, alpha=False)
-        out = out_dir / f"page_{i:02d}.png"
-        pix.save(str(out))
-        paths.append(out)
-    doc.close()
+    for i, p in enumerate(produced, start=1):
+        tgt = out_dir / f"page_{i:02d}.png"
+        if p != tgt:
+            p.rename(tgt)
+        paths.append(tgt)
     return paths
 
 

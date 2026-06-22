@@ -1,4 +1,4 @@
-"""Shared xlsx primitives used by classify / materialize / shape_probe.
+"""Shared xlsx primitives used by xlsx_to_html / materialize / drawings.
 
 All functions here are pure helpers over an openpyxl Worksheet. No I/O,
 no CLI, no business logic. Keeping this the single source of truth

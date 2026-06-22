@@ -22,3 +22,6 @@
 # Each skill may keep its own .env (with API keys) and a checked-in .env.example.
 **/.env
 !**/.env.example
+
+# Hypothesis test cache (regenerated; not source).
+**/.hypothesis/

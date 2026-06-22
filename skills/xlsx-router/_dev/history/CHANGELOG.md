@@ -1,5 +1,97 @@
 # XLSX Skill self-improvement changelog
 
+## 2026-06-22 — 全面再設計 着手（設計 + 変換器ユニット）
+
+背景: ユーザ要望「原典に忠実かつ AI ネイティブな変換 skill にしたい。最新の状態に」。
+grill-me で存在意義から各分岐を確定、deep-strict で prior art を調査、bake-off で
+最小検証してから実装。設計の全文は `_dev/REDESIGN_2026-06.md`、調査ログは
+`~/.claude/plans/deep-run-xlsx-llm-routing.md`。
+
+### 確定した方針
+
+- 成果物を「SQLite 既定」から「忠実な構造保存 HTML 既定 + SQLite(巨大)例外 +
+  画像(layout)例外」へ収斂。AI ネイティブさは事前解釈でなくフォーマット由来。
+- overfit した header 検出ヒューリスティック(detect_header_row + weight 群)は
+  「修正」でなく「忠実 HTML により不要化→削除」。
+- triage は Claude 常時レビュー(コスト許容との判断)+ 決定論が証拠(shape_probe)と
+  安全網(verify/サイズ)。根拠 deep-strict: 構造把握は text≥image(TabVerse)、
+  vision は layout 限定、hybrid/tiered が本番標準。
+- テストは「決定論 golden(HTML 変換器)+ 忠実性 hard ゲート + eval(消費側回答品質)」。
+
+### bake-off 結果（本実装ゼロ行の最小検証）
+
+最難関3シートで LibreOffice html / xlsx2html / 手書き openpyxl を比較
+（忠実性 / AI ネイティブ / トークン）。手書き openpyxl が決定的勝利:
+忠実性 100%（既製2つは転置で6〜7%欠落）、トークン 4〜15倍小。
+AI ネイティブ eval: fresh subagent が priming 無しで多段ヘッダ・転置を読解（3.5/4）。
+詳細は REDESIGN_2026-06.md「bake-off 結果」。
+
+### 実装（このイテレーション）
+
+- `scripts/xlsx_to_html.py` 新規: 忠実な構造保存 HTML 変換器。
+  結合→rowspan/colspan、静的色・塗り→inline style、日付シリアル→ISO(number_format
+  準拠)、図形/シェイプ文字→アンカー注記(xlsx_drawings 統合)。解釈ゼロ。
+  iter_rows ベースで高速(QA ワークブック31k+22kセル含め6s)。
+  忠実性 self-verify hard ゲート(欠落で exit 2)。
+- `_dev/tests/test_html_regression.py` 新規: 12 corpus ファイルの決定論 golden
+  (faithful/spans/tr/sha256)+ 全 HTML 経路シート 100% 忠実の hard assertion。
+  巨大シート(>20000セル, SQLite 経路)は golden 対象外として skip 記録。
+- 全 corpus 検証: 29シート中の HTML 経路シートすべて 100% 忠実、fail ゼロ。
+- harness: 30 passed（既存18 + 新規12）、34s。
+
+### 完了（同セッション続き）
+
+- triage を変換器に内蔵: `xlsx_to_html.py` が HTML↔SQLite をサイズ算術
+  (>20000 used cells → SQLite)で決定、図形フラグ(`suggests_image`)を manifest 化、
+  図形抽出を workbook 1回に集約。shape_probe は HTML が構造ビューを subsume するため
+  不要と判断し新設不要（既存孤児は削除）。
+- `SKILL.md` を新思想で全面書き直し（HTML 既定 / SQLite・画像例外 / manifest を
+  信じ再判断しない / 忠実性は hard ゲート）。
+- classify 一掃: `xlsx_classify.py`(697行)・`xlsx_shape_probe.py`・
+  `test_classify_regression.py` + golden 12件を削除。`test_classify_properties.py`
+  は `test_primitives_properties.py` にリネーム。harness は html golden + 忠実性
+  hard assertion + primitives property に再編、18件・6.5s（旧30件・34s より高速）。
+- `xlsx_materialize.py` rewire: overfit な classify 依存を断ち、既定は「先頭非空行=
+  ヘッダ」。E2E で『巨大かつ spec ブロック』のプランコードが反例と判明
+  （col_N 列名）→ `--header-rows` を追加し、Claude が上部を覗いてヘッダ行を渡せる
+  ように（SQLite 版「Claude が分類器、機械が判断を honor」）。行22指定で列名が
+  意味のある日本語に復旧。
+- docs 再編: P1–P5 / merges / transposed の各 doc を削除、keep する
+  drawings / multi_sheet / p6_visual / manifest テンプレを新語彙
+  (manifest / path:html|sqlite / suggests_image)へ更新。
+- 整理: 廃案の root `DESIGN.md`(iter5 framework)を `_dev/` へ退避、
+  root の stray テストキャッシュ除去。shipping root は SKILL/docs/scripts/templates のみ。
+- stale 参照の全体掃き出し: classifier / suggests_visual / header_confidence /
+  P1–P5 / 削除スクリプト の参照ゼロを確認。
+
+### E2E 検証（fresh-Claude skill-usage check, IMPROVE.md 必須項目）
+
+新フローを統合素通しで検証。対象は新フロー未通しの実マルチシート 補償基準DB(5シート)。
+- doer subagent（priming は「SKILL.md にスキルがある」のみ、手段=HTML/triage/header-rows は未教示）:
+  SKILL.md だけで完走。3 HTML(100%忠実) + 2 SQLite(self-verify ok) + manifest、triage 正。
+- consumer subagent（成果物のみ、xlsx 禁止）: 事実質問 3/3 正答。HTML 直読 + SQLite クエリ、
+  Q2 の「対象」完全一致 vs 対象外/対象/対象外 の区別まで正確。
+- 発見 defect 1件: `xlsx_verify.py` の引数形式が SKILL.md に無く doer が推測 → Scripts 行に
+  位置引数 + ratio 注意を追記して修正。
+- 結論: 設計自身の品質基準（fresh Claude が成果物だけで原典に答えられる）を満たすことを実証。
+
+### 画像経路 E2E（追加検証）
+
+suggests_image=true の HTML 経路シート（transposed_field_major の 正解データの確認）で画像経路を実通し。
+- 実 defect 発見: `xlsx_visual.py` が PyMuPDF(`fitz`)依存で、当環境に未インストール → PDF→PNG が落ちる。
+- 修正: `pdf_to_pngs` を poppler の `pdftoppm`（CLI、既インストール）シェルアウトに置換。
+  壊れやすい C 拡張依存を排除。`docs/p6_visual.md` も追従。
+- 検証: render 成功（22ページ＝転置で横長）、Read ツールが PNG をネイティブ読込（レイアウト＋黄色塗り視認）。
+- 副次確認: 同シートの静的な黄色塗りを HTML 変換器が 38 セル `background:#FFFF00` として捕捉済み
+  → 静的色は HTML 自己完結、画像は条件付き書式色／レイアウト専用という設計意図を実データで確認。
+
+### 保留（トリガ待ち）
+
+- spanning-label(区分=新契約 rowspan=50)の凡例 enrichment 層: 消費側の
+  行数誤カウント観測が再現したら起動 [eval で再現するか]。
+- 条件付き書式由来の色: openpyxl で取得不可 → 必要時は画像例外で拾う [当該シート発生時]。
+
+
 ## 2026-04-18 — Iteration 1 (initial self-improve run)
 
 Baseline harness: 6/6 pass (synthetic corpus only, LLM paths never tested fresh).

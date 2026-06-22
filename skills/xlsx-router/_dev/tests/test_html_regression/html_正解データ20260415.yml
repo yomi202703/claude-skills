@@ -1,0 +1,20 @@
+002意向確認書:
+  faithful: 67/67
+  sha256_16: 6ecd165988897e0d
+  spans: 0
+  tr: 2
+003申込書:
+  faithful: 38/38
+  sha256_16: 4d0f4a891727b33a
+  spans: 0
+  tr: 2
+005取扱者報告書:
+  faithful: 48/48
+  sha256_16: 01ad22850bf6c131
+  spans: 0
+  tr: 2
+999その他:
+  faithful: 26/26
+  sha256_16: f0d95564968b430b
+  spans: 0
+  tr: 2

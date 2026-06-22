@@ -1,8 +1,9 @@
 # P6 — Visual fallback (render sheet to PNG, read via Read tool)
 
 Triggered when:
-- classifier sets `suggests_visual: true` for a sheet
-  (many pics / many shapes / drawings exist and headers are weak), OR
+- the `xlsx_to_html` manifest sets `suggests_image: true` for a sheet
+  (drawings present) AND the HTML's `〔図形: …〕` annotations don't capture
+  the layout meaning, OR
 - the caller explicitly wants the visual path for a specific sheet.
 
 This is the **last resort** for sheets whose semantic content lives in
@@ -14,7 +15,7 @@ screenshots.
 
 `xlsx_visual.py` runs:
 1. `soffice --headless --convert-to pdf:calc_pdf_Export` (LibreOffice 26.x)
-2. `PyMuPDF` (`fitz`) renders each PDF page → PNG at `--dpi` (default 150)
+2. poppler's `pdftoppm -png -r <dpi>` renders each PDF page → PNG (default 150 DPI)
 
 Two modes:
 - **workbook** (default): one PDF for the whole workbook; all pages
@@ -28,11 +29,12 @@ Two modes:
 
 Do NOT render every workbook — it's the most expensive tier. Trigger
 visual rendering only when:
-- Tier A shapes table doesn't answer the question, OR
-- `classify.sheets[i].suggests_visual` is true AND the question is
+- the HTML (with its `〔図形: …〕` shape annotations) doesn't answer the
+  question, OR
+- the manifest's `suggests_image` is true for a sheet AND the question is
   about that sheet, OR
-- a sheet has drawings AND low `header_confidence` (cell-based reading
-  can't even find a header row).
+- the sheet's meaning lives in layout the cells + annotations can't convey
+  (arrows, overlap, conditional-format color).
 
 ## How Claude Code should use the output
 

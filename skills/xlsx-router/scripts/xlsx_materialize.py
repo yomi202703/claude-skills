@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """xlsxをSQLiteに一括変換（Claude Code用 取り込みスクリプト）。
 
-classify_sheet を呼び出して header_rows / data_rows を取得し、
-正しいヘッダー行の値を列名として採用、データ行範囲も尊重する。
+SQLite 経路は巨大・均一な db ライクシート専用（複雑シートは HTML 経路）。
+ヘッダーは先頭の非空行、データはその下〜末尾（末尾空行トリム）とする。
 結合セルの anchor 値はヘッダー・データ行いずれも forward-fill する。
 
 使用例:
@@ -20,8 +20,24 @@ import openpyxl
 
 sys.path.insert(0, str(Path(__file__).parent))
 import xlsx_primitives as _prim  # noqa: E402
-from xlsx_classify import classify_sheet  # noqa: E402
 from xlsx_drawings import extract as _extract_drawings  # noqa: E402
+
+
+def _simple_header_and_data(ws):
+    """Header = first non-empty row; data = rows beneath it (trailing blanks
+    trimmed). The SQLite path only receives large, uniform db-like sheets —
+    complex/merged sheets take the HTML path — so a row-1-style header is correct
+    here and no heuristic header scoring is needed.
+    """
+    first = last = None
+    for r, row in enumerate(ws.iter_rows(values_only=True), start=1):
+        if any(v is not None and (not isinstance(v, str) or v.strip()) for v in row):
+            if first is None:
+                first = r
+            last = r
+    if first is None:
+        return [1], 2, 1
+    return [first], first + 1, (last if last is not None else first)
 
 
 def _write_drawings_table(cur, sheet_slug: str, shapes: list) -> int:
@@ -69,6 +85,12 @@ def main():
     p.add_argument(
         "--skip-merged", action="store_true", help="skip sheets with merged cells"
     )
+    p.add_argument(
+        "--header-rows",
+        help="comma-separated header row indices (e.g. '22' or '9,10') when the "
+        "real header is NOT the first non-empty row (spec block above the table). "
+        "Supply this from your own read of the top rows; default: first non-empty row.",
+    )
     args = p.parse_args()
 
     out_path = args.out or str(Path(args.file).with_suffix(".sqlite"))
@@ -102,28 +124,21 @@ def main():
             )
 
         sheet_draw = drawings_by_sheet.get(sn) or {}
-        meta = classify_sheet(wb, sn, Path(args.file).name, drawings_info=sheet_draw)
-        # Always write the drawings table when meaningful shapes/pics/cxns exist,
-        # regardless of content_type — notes sheets with product diagrams still
-        # need their annotations captured somewhere queryable.
+        # Capture floating shape/pic annotations regardless — queryable alongside data.
         shapes = sheet_draw.get("shapes") or []
-        sheet_slug = meta.get("sheet_slug") or sn
+        sheet_slug = _prim.sanitize_slug(sn)
         if shapes:
             draw_rows = _write_drawings_table(cur, sheet_slug, shapes)
             print(
                 f"[ok]   {sn} -> \"{sheet_slug}_drawings\" ({draw_rows} shapes/pics)",
                 file=sys.stderr,
             )
-        if meta.get("content_type") == "notes":
-            print(
-                f"[skip] {sn}: content_type=notes — use P3 notes flow "
-                f"(xlsx_read + LLM prose generation), not SQLite",
-                file=sys.stderr,
-            )
-            continue
-        header_rows = meta.get("header_rows") or [1]
-        data_rows_range = meta.get("data_rows") or [max(header_rows) + 1, ws.max_row]
-        data_start, data_end = data_rows_range
+        if args.header_rows:
+            hr = [int(x) for x in args.header_rows.split(",") if x.strip()]
+            _, _, data_end = _simple_header_and_data(ws)
+            header_rows, data_start = hr, max(hr) + 1
+        else:
+            header_rows, data_start, data_end = _simple_header_and_data(ws)
 
         merge_lookup = _prim.build_merge_lookup(ws)
         labels = _prim.concat_header_labels(ws, header_rows, merge_lookup)
