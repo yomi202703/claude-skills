@@ -35,11 +35,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/ivymee/.claude/skills/xlsx-router/_dev/hook_check.sh"
+            "command": "$HOME/.claude/skills/xlsx-router/_dev/hook_check.sh"
           },
           {
             "type": "command",
-            "command": "/Users/ivymee/Projects/ai-wiki-skill/_dev/hook_check.sh"
+            "command": "$HOME/Projects/ai-wiki-skill/_dev/hook_check.sh"
           }
         ]
       }
@@ -47,7 +47,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "/Users/ivymee/.claude/statusline.sh"
+    "command": "$HOME/.claude/statusline.sh"
   },
   "enabledPlugins": {
     "pyright-lsp@claude-plugins-official": true,

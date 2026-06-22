@@ -100,7 +100,7 @@ Spawned 4 parallel subagents (clean context) to exercise P1–P4 paths on:
 - corpus/structured_small.xlsx (P3)
 - corpus/structured_large.xlsx (P4)
 - corpus/multi_sheet.xlsx (multi)
-- /Users/ivymee/Projects/MS/法人契約チェックシート_202507.xlsx (real, P4)
+- ~/Projects/MS/法人契約チェックシート_202507.xlsx (real, P4)
 
 Common friction points found:
 1. `header_row_index` not exposed — every subagent re-derived the header manually; 法人契約チェックシート needed row 9 (not row 1).
