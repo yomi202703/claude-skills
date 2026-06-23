@@ -181,7 +181,7 @@ domain-agnostic。判定固有部は judge-loop が置き、CLAUDE.md と 成果
 - G4 主張を現実に合わせる=証拠/モデルが支える範囲しか主張せず証拠を引いて検証可能にする。断定/2値/隔離はドメインの現実で決める選択（原因5・ただし断定禁止自体は認知一事例ゆえ非ゲート化）
 - G5 基準を変えたら(特に carve-out)全件 resweep＋俯瞰で他ケースの巻き添えを検出（原因7・load 敏感のメカニズムは gemma-prompt 前提・救済は P4 で別スクリーン分離）
 - G6 grill hook の却下オプションとオーナー裁定を理由つきで台帳へ流し fork を蒸し返さない（過ち3・台帳の構造自体は claude-md/global=本ゲートは choice 機構の出力を流す義務）
-- G7 measurement/診断計器は早く作る(螺旋収束の前提)・他の横断/delivery インフラは軸が固まる(P0u SETTLE)まで遅らせる・早期計器は単一設定駆動の review server(S1)で viewer 乱立でない（過ち4）
+- G7 インフラはカレンダーでなく単位依存度で時を決める。単位非依存の基盤(scaffold・取り込み/データ理解・アクセス層)は単位が固まる前に作ってよい=単位が動いても形が動かず出戻りなし・P0.0 が早期に要求。単位依存のインフラ(delivery・作り込み serving・carve-out)は P0u SETTLE まで遅らせる。例外=診断計器: 単位依存だが早く作る(分布を見ないと単位を発見できない)→config 駆動で単位変更を再設定で吸収(単一 review server S1・viewer 乱立でない)。迷ったら「形は単位で決まるか」を問い・判別不能なら pre-SETTLE とみなし計器以外を遅らせる（過ち4=早すぎる共通化と取り込み早期化を非矛盾化）
 - G8 基準を疑う前にデータを疑う=誤検知は証拠経路・抜け漏れ/masking は原典被覆(RAG/系統突合)（原因8＋旧 masking 原因6=実は被覆不足。原子分割は gemma-prompt/P4 の技法でゲートでない）
 - G9 過学習禁止・validity≠detectability=再現性/測りやすさで軸を選ぶな(街灯バイアス)・holdout/新規オーナー反応で汎化確認・検証標本で追いチューニングしない（主体性 holdout・認知 orientation 撃退・実装は review-server S12）
 
@@ -218,6 +218,7 @@ P0〜P4 は実史では分離せず螺旋だった。解＝「単位スパイク
 - ~~P0.0 のディレクトリ構成規約~~ → 済(3.5 章 canonical tree: _data/{raw,processed}・contract・gt/<tier>・spike・outputs・review_server・eval・成果物)。
 - P3 ハーネス＋run-ledger の実 template/code。[deferred・発火: 別ドメインで再現性測定が要るとき] 設計と run-ledger format は 5章 P3 にあり・コード化は review-server template と同様に後回し。
 - P0.0 取り込みの合成: xlsx → /xlsx-router ・ pdf → /pdf-to-md で前処理し、処理後を所定の場所へ(P2→review-server と同型の skill 合成)。
+- ブランチ点の合成 = task-handoff スキルとして起こし済(2026-06-22)。作業が独立並行ストリームに割れる任意フェーズで、main→main をファイル(自己完結タスク契約)で渡す=lossy なサブエージェント要約でなく full-fidelity・各ストリームは cold-restart 可。grill-me が分岐を gate(統合先/トリガ/共有出力スキーマを分岐前に確定)。PM=成果物/ が後で再結合。
 - アクセス層スキル(MCP・3モード SQL/PDF/RAG・文字起こし意味検索＋統一アクセス口)。[deferred・発火: 別ドメイン着手で源泉アクセスが要るとき] 2026-06 スキル監査で「judge-loop の唯一の prerequisite 穴(review-server 型のインフラ雛形スキル)」と確認。Pre-P0.0 が誘導する空ポインタ。
 - 全体 pressure-test(本方法論は n=1=あかつき由来ゆえ・別ドメインで各ゲートを当てて overfit を検出)。
 
