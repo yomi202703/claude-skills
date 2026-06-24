@@ -8,7 +8,10 @@ template: adapt data.py for your domain; this file should not need changes.
 
 Gates wired structurally:
   S3  GT-creation path (render_review) NEVER calls adapter.judges() — a
-      reviewer cannot see any machine output until commit.
+      reviewer cannot see any machine output until commit. The firewall is the
+      RENDERING, not a login: mode is chosen by route (/diag vs /review), no
+      auth by default. Authentication / reviewer attribution is a later concern
+      (grill hook), added only when untrusted external blind reviewers arrive.
   S4  commit stores the blind verdict, THEN reveals judges + divergence.
   S8  every GET is read-only; only POST /commit and POST /ingest write.
   S9  one ingestion path (POST /ingest, inbox CSV).
@@ -31,7 +34,6 @@ import os
 import urllib.parse
 import zipfile
 from datetime import datetime, timezone
-from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from data import DemoAdapter, divergence
@@ -41,9 +43,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CONTRACT = json.load(open(os.path.join(HERE, "contract.example.json"), encoding="utf-8"))
 ADAPTER = DemoAdapter()
 STORE = Store(os.path.join(HERE, "gt.db"))
-DEV_PASSWORD = os.environ.get("REVIEW_DEV_PASSWORD", "dev")  # localhost template default
 SOURCE = "live"  # flipped to "snapshot" by --snapshot marker (S10)
-SESSIONS: dict[str, dict] = {}  # token -> {role, name}
+# No auth by default: mode is chosen by route (/diag vs /review). Reviewer
+# attribution defaults to a constant; named/authenticated reviewers are a later
+# grill hook (review-server CHOICES: auth strength), wired only when external
+# blind reviewers are onboarded — not pre-built.
+REVIEWER = "anon"
 
 
 def _now() -> str:
@@ -52,10 +57,6 @@ def _now() -> str:
 
 def _versions() -> dict:
     return dict(CONTRACT["version"])
-
-
-def _token() -> str:
-    return os.urandom(12).hex()
 
 
 # --- rendering ---------------------------------------------------------------
@@ -105,11 +106,6 @@ def render_judges(judges: dict) -> str:
 
 # --- handler -----------------------------------------------------------------
 class H(BaseHTTPRequestHandler):
-    def _session(self) -> dict | None:
-        c = SimpleCookie(self.headers.get("Cookie", ""))
-        tok = c["rs"].value if "rs" in c else ""
-        return SESSIONS.get(tok)
-
     def _send(self, body: bytes, code: int = 200, headers: dict | None = None):
         self.send_response(code)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -127,82 +123,58 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
         parts = [p for p in u.path.split("/") if p]
-        sess = self._session()
         if not parts:
-            return self._send(self.login_page())
-        if parts[0] == "units":
-            return self._send(self.units_page(sess))
+            return self._send(self.landing_page())
+        if parts[0] == "diag" and len(parts) == 1:
+            return self._send(self.units_page("diag"))
+        if parts[0] == "review" and len(parts) == 1:
+            return self._send(self.units_page("gt"))
         if parts[0] == "review" and len(parts) == 2:
-            return self._send(self.review_page(parts[1], sess))   # S3: no judges here
+            return self._send(self.review_page(parts[1]))   # S3: no judges here
         if parts[0] == "diag" and len(parts) == 2:
-            return self._guard_dev(sess) or self._send(self.diag_page(parts[1]))
+            return self._send(self.diag_page(parts[1]))
         if parts[0] == "aggregate":
-            return self._guard_dev(sess) or self._send(self.aggregate_page())
+            return self._send(self.aggregate_page())
         if parts[0] == "eval":
-            return self._guard_dev(sess) or self._send(self.eval_page())
+            return self._send(self.eval_page())
         return self._send(page("not found"), 404)
 
     def do_POST(self):
         u = urllib.parse.urlparse(self.path)
         parts = [p for p in u.path.split("/") if p]
-        if parts == ["login"]:
-            return self.do_login()
-        sess = self._session()
         if parts[:1] == ["commit"] and len(parts) == 2:
-            return self._send(self.commit(parts[1], sess))
+            return self._send(self.commit(parts[1]))
         if parts == ["ingest"]:
-            return self._guard_dev(sess) or self._send(self.ingest())
+            return self._send(self.ingest())
         return self._send(page("not found"), 404)
 
-    def _guard_dev(self, sess):
-        if not sess or sess.get("role") != "developer":
-            self._send(page("developer login required"), 403)
-            return True
-        return None
-
     # pages -------------------------------------------------------------------
-    def login_page(self) -> bytes:
+    def landing_page(self) -> bytes:
+        # No login. Mode = route. The anchoring firewall lives in what each
+        # route renders (S3), not in authentication.
         return page(
             "<h2>review-server</h2>"
-            '<form method=post action=/login>'
-            'Reviewer name: <input name=name> '
-            '<button name=role value=reviewer>enter (GT-creation)</button><br><br>'
-            'Developer password: <input name=password type=password> '
-            '<button name=role value=developer>enter (diagnostic)</button>'
-            "</form>"
+            "<p>pick a mode (no login — firewall is render-time, S3):</p>"
+            "<ul>"
+            '<li><a href="/review">GT-creation</a> — blind: input + evidence only, '
+            "machine output revealed after commit</li>"
+            '<li><a href="/diag">diagnostic</a> — developer: sees every judge · '
+            '<a href="/aggregate">aggregate</a> · <a href="/eval">eval</a></li>'
+            "</ul>"
         )
 
-    def do_login(self):
-        f = self._form()
-        role = f.get("role", "reviewer")
-        if role == "developer":
-            if f.get("password") != DEV_PASSWORD:
-                return self._send(page("wrong password"), 403)
-            name = "developer"
-        else:
-            name = f.get("name", "").strip() or "anon"
-        tok = _token()
-        SESSIONS[tok] = {"role": role, "name": name}
-        self._send(
-            page("ok"), 303,
-            {"Set-Cookie": f"rs={tok}; Path=/", "Location": "/units"},
-        )
-
-    def units_page(self, sess) -> bytes:
-        if not sess:
-            return page("not logged in")
+    def units_page(self, mode: str) -> bytes:
+        base = "diag" if mode == "diag" else "review"
         rows = "".join(
-            f'<li><a href="/{"diag" if sess["role"]=="developer" else "review"}/'
-            f'{html.escape(u["unit_key"])}">{html.escape(u["label"])}</a></li>'
+            f'<li><a href="/{base}/{html.escape(u["unit_key"])}">{html.escape(u["label"])}</a></li>'
             for u in ADAPTER.units()
         )
-        nav = ' · <a href=/aggregate>aggregate</a> · <a href=/eval>eval</a>' if sess["role"] == "developer" else ""
-        return page(f"<h3>{sess['role']}{nav}</h3><ul>{rows}</ul>", who=sess["name"])
+        nav = ' · <a href=/aggregate>aggregate</a> · <a href=/eval>eval</a>' if mode == "diag" else ""
+        label = "diagnostic" if mode == "diag" else "GT-creation"
+        return page(f"<h3>{label}{nav}</h3><ul>{rows}</ul>", who=mode)
 
-    def review_page(self, unit_key: str, sess) -> bytes:
+    def review_page(self, unit_key: str) -> bytes:
         # S3 ANCHORING FIREWALL: input + evidence ONLY. Never call ADAPTER.judges().
-        if not sess:
-            return page("not logged in")
         inp = ADAPTER.unit_input(unit_key)
         axes = "".join(
             f'<div class=j><b>{html.escape(a["label"])}</b>'
@@ -221,12 +193,10 @@ class H(BaseHTTPRequestHandler):
             + 'reason: <input name=reason style="width:60%"> '
             + 'evidence idx (comma): <input name=evidence><br><br>'
             + "<button>commit (then reveal)</button></form>",
-            who=sess["name"],
+            who="GT-creation",
         )
 
-    def commit(self, unit_key: str, sess) -> bytes:
-        if not sess:
-            return page("not logged in")
+    def commit(self, unit_key: str) -> bytes:
         f = self._form()
         revealed = ""
         for a in CONTRACT["axes"]:
@@ -237,7 +207,7 @@ class H(BaseHTTPRequestHandler):
                 unit_key=unit_key, axis_key=a["key"], verdict=verdict,
                 reason=f.get("reason", ""),
                 evidence=json.dumps([s.strip() for s in f.get("evidence", "").split(",") if s.strip()]),
-                reviewer=sess["name"], provenance="blind", tier="silver",
+                reviewer=REVIEWER, provenance="blind", tier="silver",
                 versions=_versions(),
             )
             # S4: reveal AFTER the blind verdict is stored.
@@ -247,8 +217,8 @@ class H(BaseHTTPRequestHandler):
         return page(
             f"<h3>committed {html.escape(unit_key)}</h3>"
             "<p>your blind verdict is stored. now revealed:</p>" + revealed
-            + '<p><a href="/units">next</a></p>',
-            who=sess["name"],
+            + '<p><a href="/review">next</a></p>',
+            who="GT-creation",
         )
 
     def diag_page(self, unit_key: str) -> bytes:

@@ -1,7 +1,6 @@
 # pdf-to-md 全面再設計 (2026-06) — MinerU前提 → Claude前提
 
-grill で存在意義から各分岐を確定、deep-strict で prior art を調査
-(`~/.claude/plans/deep-run-pdf-to-md-claude.md`)、実物(88p 和文コンプラマニュアル)の
+grill で存在意義から各分岐を確定、deep-strict で prior art を調査、実物(88p 和文コンプラマニュアル)の
 TOC/本文2スライスで bake-off 検証してから実装。
 
 ## 目的

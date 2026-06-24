@@ -1,8 +1,7 @@
 # xlsx-router 全面再設計 (2026-06)
 
 ルート `DESIGN.md`(iter5 の family-router 案、STATUS: deferred)を supersede する。
-grill-me で存在意義から各分岐まで詰めた合意設計。deep-strict 調査
-(`~/.claude/plans/deep-run-xlsx-llm-routing.md`)を根拠に持つ。
+grill-me で存在意義から各分岐まで詰めた合意設計。deep-strict 調査を根拠に持つ。
 
 ## 目的
 

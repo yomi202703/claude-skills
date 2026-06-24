@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>judge-loop 実行フロー(DAG)</title>
+<style>
+  :root{
+    --bg:#ffffff; --ink:#1f2430; --mut:#6b7280; --line:#dfe3e8; --panel:#f7f8fa;
+    --pre:#2f6fed; --core:#475569; --post:#1f9d57; --route:#15a34a; --spiral:#e08a00; --hot:#e08a00;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+    line-height:1.6;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto;padding:26px 22px 80px}
+  h1{font-size:23px;margin:0 0 4px}
+  .sub{color:var(--mut);font-size:13px;margin-bottom:2px}
+  .stamp{color:var(--mut);font-size:12px;margin-bottom:20px}
+  .stamp code{background:var(--panel);padding:1px 6px;border-radius:4px}
+  h2{font-size:16px;margin:30px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}
+
+  .dagwrap{border:1px solid var(--line);border-radius:14px;background:#fff;padding:8px 4px;overflow-x:auto}
+  svg{display:block;width:100%;height:auto;max-width:760px;margin:0 auto}
+  .nlabel{font:700 13px -apple-system,system-ui,sans-serif}
+  .nsub{font:400 11px -apple-system,system-ui,sans-serif;fill:var(--mut)}
+  .slabel{font:600 12px -apple-system,system-ui,sans-serif}
+  .elabel{font:600 11px -apple-system,system-ui,sans-serif}
+
+  .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin:10px 2px 0}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+  .ln{width:26px;height:0;border-top-width:2px;display:inline-block}
+  .ln.fwd{border-top:2px solid #475569}
+  .ln.rt{border-top:2px dashed var(--route)}
+  .ln.sp{border-top:2px dashed var(--spiral)}
+
+  .gateband{background:#f6f2fc;border:1px solid #e4d7f5;border-radius:14px;padding:14px 16px;margin-top:6px}
+  .gateband .ttl{font-weight:600;margin-bottom:8px;font-size:14px;color:#6b3fa0}
+  .gates{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:8px}
+  .gate{background:#fff;border:1px solid #e4d7f5;border-radius:8px;padding:8px 10px;font-size:12.5px}
+  .gate b{color:#7b41c4}
+  .gate.hot{border-color:var(--hot);background:#fff8ee;box-shadow:0 0 0 1px var(--hot) inset}
+  .gate.hot b{color:#b96b00}
+  .gate .mini{color:var(--mut);font-size:11px}
+
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:760px){.cols{grid-template-columns:1fr}}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .card h3{margin:0 0 8px;font-size:14px;color:var(--pre)}
+  .card ul{margin:0;padding-left:18px}
+  .card li{margin:4px 0;font-size:13px}
+  .card li b{color:var(--ink)}
+  .note{font-size:12px;color:var(--mut);margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>judge-loop 実行フロー <span style="font-size:14px;color:var(--mut)">— DAG</span></h1>
+  <div class="sub">正解(GT)が事前に無い判定/採点/抽出ループの開発標準 — 薄いオーケストレータ(中身は指示せず・フェーズ検出/ゲート強制/grill-hook 発火/sub-skill routing のみ)</div>
+  <div class="stamp">source: <code>SKILL.md</code> @ <code>ac4e3fb</code> ・ 生成 2026-06-23 ・ 手書き(SKILL.md が変わったら再生成)</div>
+
+  <div class="dagwrap">
+  <svg viewBox="0 0 720 880" role="img" aria-label="judge-loop phase DAG">
+    <defs>
+      <marker id="afwd" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#475569"/></marker>
+      <marker id="art" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#15a34a"/></marker>
+      <marker id="asp" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#e08a00"/></marker>
+    </defs>
+
+    <!-- forward spine edges -->
+    <g stroke="#475569" stroke-width="2" fill="none" marker-end="url(#afwd)">
+      <line x1="295" y1="87"  x2="295" y2="127"/>
+      <line x1="295" y1="183" x2="295" y2="223"/>
+      <line x1="295" y1="279" x2="295" y2="319"/>
+      <line x1="295" y1="375" x2="295" y2="415"/>
+      <line x1="295" y1="471" x2="295" y2="511"/>
+      <line x1="295" y1="567" x2="295" y2="607"/>
+      <line x1="295" y1="663" x2="295" y2="703"/>
+      <line x1="295" y1="759" x2="295" y2="799"/>
+    </g>
+    <text class="elabel" x="312" y="400" fill="#1f9d57">SETTLE 後のみ↓</text>
+
+    <!-- spiral back-edges (P4 -> P0u, P0u self) -->
+    <g stroke="#e08a00" stroke-width="2" fill="none" stroke-dasharray="5 4" marker-end="url(#asp)">
+      <path d="M180,732 C70,700 70,378 176,350"/>
+      <path d="M178,335 C146,322 146,360 176,348"/>
+    </g>
+    <text class="elabel" x="58" y="545" fill="#b96b00" transform="rotate(-90 58 545)">螺旋: 基準/構造問題は単位へ差し戻し</text>
+    <text class="elabel" x="120" y="316" fill="#b96b00">再スパイク</text>
+
+    <!-- route edges (dashed green) -->
+    <g stroke="#15a34a" stroke-width="1.6" fill="none" stroke-dasharray="4 4" opacity="0.85" marker-end="url(#art)">
+      <path d="M410,60  C470,60 470,60 514,60"/>
+      <path d="M410,156 C470,150 480,135 514,130"/>
+      <path d="M410,156 C480,210 460,400 514,438"/>
+      <path d="M410,252 C470,252 470,252 514,252"/>
+      <path d="M410,348 C470,360 470,520 514,536"/>
+      <path d="M410,444 C470,444 470,444 514,444"/>
+      <path d="M410,540 C470,540 470,540 514,540"/>
+      <path d="M410,636 C470,636 470,636 514,636"/>
+      <path d="M410,732 C486,690 470,470 514,450"/>
+      <path d="M410,828 C486,790 470,580 514,548"/>
+      <path d="M410,732 C470,760 470,810 514,822"/>
+    </g>
+
+    <!-- spine nodes -->
+    <g>
+      <!-- helper: each node = rect + stripe + 2 texts -->
+      <!-- 0 Scaffold pre -->
+      <rect x="180" y="33"  width="230" height="54" rx="9" fill="#fff" stroke="#dfe3e8"/><rect x="180" y="33" width="6" height="54" rx="3" fill="#2f6fed"/>
+      <text class="nlabel" x="200" y="56">Scaffold</text><text class="nsub" x="200" y="74">足場(判定tree + メモリ層)・day1</text>
+      <!-- 1 Pre-P0.0 pre -->
+      <rect x="180" y="129" width="230" height="54" rx="9" fill="#fff" stroke="#dfe3e8"/><rect x="180" y="129" width="6" height="54" rx="3" fill="#2f6fed"/>
+      <text class="nlabel" x="200" y="152">Pre-P0.0</text><text class="nsub" x="200" y="170">統一アクセス層(MCP・3モード)</text>
+      <!-- 2 P0.0 core -->
+      <rect x="180" y="225" width="230" height="54" rx="9" fill="#fff" stroke="#dfe3e8"/><rect x="180" y="225" width="6" height="54" rx="3" fill="#475569"/>
+      <text class="nlabel" x="200" y="248">P0.0</text><text class="nsub" x="200" y="266">源泉棚卸し(型つき源泉地図)</text>
+      <!-- 3 P0u core ★ -->
+      <rect x="180" y="321" width="230" height="54" rx="9" fill="#fff7ec" stroke="#e9c98a"/><rect x="180" y="321" width="6" height="54" rx="3" fill="#475569"/>
+      <text class="nlabel" x="200" y="344">P0u ★</text><text class="nsub" x="200" y="362">単位発見(螺旋・最重要・最高コスト)</text>
+      <!-- 4 P1 core -->
+      <rect x="180" y="417" width="230" height="54" rx="9" fill="#fff" stroke="#dfe3e8"/><rect x="180" y="417" width="6" height="54" rx="3" fill="#475569"/>
+      <text class="nlabel" x="200" y="440">P1</text><text class="nsub" x="200" y="458">出力契約(SETTLE後に固定・最も保護)</text>
+      <!-- 5 P2 core -->
+      <rect x="180" y="513" width="230" height="54" rx="9" fill="#fff" stroke="#dfe3e8"/><rect x="180" y="513" width="6" height="54" rx="3" fill="#475569"/>
+      <text class="nlabel" x="200" y="536">P2</text><text class="nsub" x="200" y="554">人手ループ(雑GT + 1サーバー2モード)</text>
+      <!-- 6 P3 core -->
+      <rect x="180" y="609" width="230" height="54" rx="9" fill="#fff" stroke="#dfe3e8"/><rect x="180" y="609" width="6" height="54" rx="3" fill="#475569"/>
+      <text class="nlabel" x="200" y="632">P3</text><text class="nsub" x="200" y="650">本番judge + 再現ハーネス + run-ledger</text>
+      <!-- 7 P4 core -->
+      <rect x="180" y="705" width="230" height="54" rx="9" fill="#fff" stroke="#dfe3e8"/><rect x="180" y="705" width="6" height="54" rx="3" fill="#475569"/>
+      <text class="nlabel" x="200" y="728">P4</text><text class="nsub" x="200" y="746">基準を詰める(原子台帳・別スクリーン分離)</text>
+      <!-- 8 GT-established post -->
+      <rect x="180" y="801" width="230" height="54" rx="9" fill="#fff" stroke="#dfe3e8"/><rect x="180" y="801" width="6" height="54" rx="3" fill="#1f9d57"/>
+      <text class="nlabel" x="200" y="824">GT-established</text><text class="nsub" x="200" y="842">定常(回帰eval + holdout + 鮮度)</text>
+    </g>
+
+    <!-- sub-skill nodes (route targets) -->
+    <g>
+      <rect x="514" y="42"  width="170" height="36" rx="8" fill="#f7f8fa" stroke="#d6dae0"/><text class="slabel" x="528" y="65" fill="#15803d">claude-md</text>
+      <rect x="514" y="112" width="170" height="36" rx="8" fill="#f7f8fa" stroke="#d6dae0"/><text class="slabel" x="528" y="135" fill="#15803d">access-layer</text>
+      <rect x="514" y="234" width="170" height="36" rx="8" fill="#f7f8fa" stroke="#d6dae0"/><text class="slabel" x="528" y="257" fill="#15803d">xlsx-router / pdf-to-md</text>
+      <rect x="514" y="426" width="170" height="36" rx="8" fill="#f7f8fa" stroke="#d6dae0"/><text class="slabel" x="528" y="449" fill="#15803d">grill-me</text>
+      <rect x="514" y="522" width="170" height="36" rx="8" fill="#f7f8fa" stroke="#d6dae0"/><text class="slabel" x="528" y="545" fill="#15803d">review-server</text>
+      <rect x="514" y="618" width="170" height="36" rx="8" fill="#f7f8fa" stroke="#d6dae0"/><text class="slabel" x="528" y="641" fill="#15803d">gemma-prompt</text>
+      <rect x="514" y="810" width="170" height="36" rx="8" fill="#f7f8fa" stroke="#d6dae0"/><text class="slabel" x="528" y="833" fill="#15803d">task-handoff</text>
+    </g>
+  </svg>
+  </div>
+  <div class="legend">
+    <span><i class="ln fwd"></i>前進(フェーズ順序)</span>
+    <span><i class="ln sp"></i>螺旋(戻り・差し戻し)</span>
+    <span><i class="ln rt"></i>routing(→ sub-skill)</span>
+    <span>★ = 単位発見(最重要)・grill-me/review-server へはファンイン</span>
+    <span style="color:#b96b00">+ grill-me はあらゆる fork から / task-handoff は任意の分岐点から</span>
+  </div>
+
+  <h2>不変ゲート G1–G9(全フェーズに常時かかる・継承拒否の番人)</h2>
+  <div class="gateband">
+    <div class="ttl">DAG の各ノードを横断する制約。フェーズでなく常時。</div>
+    <div class="gates">
+      <div class="gate"><b>G1</b> 判定単位を継承しない・目的から導く</div>
+      <div class="gate"><b>G2</b> 決定論ファースト・LLMは意味の残差・確信度はコード導出(自己申告禁止)</div>
+      <div class="gate"><b>G3</b> 本番judgeは報酬でない・クローン禁止・holdoutで測る・報酬はオーナー反応</div>
+      <div class="gate"><b>G4</b> 主張を現実に合わせる・証拠を引いて検証可能に(断定/2値/隔離は P1 の選択)</div>
+      <div class="gate"><b>G5</b> 基準変更(carve-out)→全件 re-sweep + 俯瞰で巻き添え検出(検出のみ・救済 P4)</div>
+      <div class="gate"><b>G6</b> grill-hook 却下とオーナー裁定を理由つき台帳へ(蒸し返し防止)</div>
+      <div class="gate hot"><b>G7</b> インフラは単位依存度で時を決める: 単位非依存(scaffold/取り込み/アクセス層)=要件前OK / 単位依存=SETTLE後 / 例外=診断計器は config 駆動で早く・判別不能=pre-SETTLE=計器以外を遅らせる <span class="mini">★今セッションで二分法から書き直し</span></div>
+      <div class="gate"><b>G8</b> 基準を疑う前にデータを疑う(誤検知→証拠経路 / 抜け→原典被覆)</div>
+      <div class="gate"><b>G9</b> 過学習禁止・validity≠detectability・holdout/新規反応で汎化確認</div>
+    </div>
+  </div>
+
+  <h2>毎ターン / 足場 / 中核手続き</h2>
+  <div class="cols">
+    <div class="card">
+      <h3>毎ターン(5)</h3>
+      <ul>
+        <li><b>1 フェーズ検出</b> — P0.0→P0u→P1→P2→P3→P4(螺旋・行進でない)</li>
+        <li><b>2 ゲート強制</b> — G1–G9・opt-out 拒否</li>
+        <li><b>3 routing</b> — 所有 sub-skill へ・再実装しない</li>
+        <li><b>4 出力命名</b> — 成果物と置き場所を名指す</li>
+        <li><b>5 grill-hook 発火</b> — 次のオーナー判断・先回りしない</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Premises(標準前提)</h3>
+      <ul>
+        <li><b>GT は遅れて来る</b> — 確立前に end-to-end で回す・サーバーを早く</li>
+        <li><b>本番judge = ローカル/開 Gemma級を API 配信</b></li>
+        <li><b>Day-1 scaffold</b> — ディレクトリ + 四役 working-docs</li>
+        <li><b>共有中立ファクト層</b> — 事実を1回中立抽出し全 judge が消費</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Cores(手続き)</h3>
+      <ul>
+        <li><b>単位スパイク</b> — 分布が見える数だけ出力→反応→俯瞰診断</li>
+        <li><b>俯瞰診断</b> — 構造共有FP→単位 / 散発際→基準 / 揺れ→ノイズ</li>
+        <li><b>SETTLE</b> — unit-keying タグ K round 連続ゼロ→単位確定</li>
+        <li><b>幻のリグレッション</b> — A/A 床を測ってから A/B・境界は安全側</li>
+        <li><b>1体制所見 ≠ N フラグ</b></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>合成(routing 先)</h3>
+      <ul>
+        <li>fork → <b>grill-me</b> / judge プロンプト → <b>gemma-prompt</b></li>
+        <li>共有 review サーバー(診断+GT作成+評価) → <b>review-server</b></li>
+        <li>repo メモリ → <b>claude-md</b>(Scaffold)</li>
+        <li>独立並行 main への fan-out → <b>task-handoff</b></li>
+      </ul>
+      <div class="note">judge-loop の自前コードは K-run/flutter/分布diff ハーネスのみ。他は routing。</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

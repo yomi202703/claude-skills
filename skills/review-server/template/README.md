@@ -11,15 +11,16 @@ Domain-agnostic skeleton of the single shared review server. Standard library on
 - `server.py:review_page` — never calls `judges()`; the anchoring firewall (S3). `commit` reveals only after storing the blind verdict (S4).
 
 ## Run
-- `python3 server.py` → http://localhost:8030/ (dev password = env `REVIEW_DEV_PASSWORD`, default `dev`).
+- `python3 server.py` → http://localhost:8030/. No login: the landing page picks a mode by route. The anchoring firewall is render-time (S3), not auth.
 - `python3 server.py --snapshot` → freeze a snapshot provenance marker; serve with `REVIEW_SOURCE=snapshot`.
 - `python3 server.py --package` → distributable zip, excludes the answer DB / inbox / caches (S10).
-- Ingestion: drop reviewer CSVs in `inbox/`, POST `/ingest` (developer) — the one path (S9).
+- Ingestion: drop reviewer CSVs in `inbox/`, POST `/ingest` — the one path (S9).
 
-## Modes
-- GT-creation (reviewer login): input + evidence only → commit → reveal + divergence.
-- Diagnostic (developer login): 3-pane + aggregate divergence queue.
-- Evaluation (developer): regression vs gold, stale-gold, holdout access log — measurement, not a target (S12).
+## Modes (chosen by route, no login)
+- GT-creation (`/review`): input + evidence only → commit → reveal + divergence.
+- Diagnostic (`/diag`): 3-pane + aggregate divergence queue.
+- Evaluation (`/eval`): regression vs gold, stale-gold, holdout access log — measurement, not a target (S12).
+- Reviewer attribution defaults to `anon`; auth + named reviewers are a later grill hook, added only when untrusted external blind reviewers arrive.
 
 ## Not built (host adds per campaign)
 - The anchored/ratify GT surface (fast silver path): `store.py` accepts `provenance="anchored"`; add a surface that shows the proposer reason. It can never produce gold/holdout (enforced).

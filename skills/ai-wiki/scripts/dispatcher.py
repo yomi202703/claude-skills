@@ -26,8 +26,9 @@ v5 paradigm (REQUIREMENTS §14): concepts/ 廃止、ai-digest 独立化。
 `enrich`, `project`, `coverage`, `research`, `ingest --from-digest`
 はこの版で全削除された。`drill` の自動採点ループも削除。代わりに card-draft が
 narrative tree の記号([?][★][⟳]…)を決定論的に walk して網羅的な暗記デッキを生成
-(網羅は構造保証、LLMは清書のみ)。card-add は手動の補助。drill 会話は「ミス→その
-カードに戻れ」の診断に縮小 (SKILL.md "Cards & recall drill" / hard rule #2 参照)。
+(網羅は構造保証、LLMは清書のみ)。card-add は手動の補助で、discovery drill が
+最初の習得でつまずきから誤概念カードを mint する (SKILL.md "Cards" / discovery
+drill / hard rule #2 参照)。
 
 All commands accept --vault PATH (default: $AI_WIKI_ROOT or ~/ai-wiki).
 """
@@ -51,6 +52,7 @@ import narrative_draft as mod_narrative_draft  # noqa: E402
 import pillars as mod_pillars  # noqa: E402
 import pipeline as mod_pipeline  # noqa: E402
 import schema as mod_schema  # noqa: E402
+import subject_dag as mod_subject_dag  # noqa: E402
 from vault import Vault  # noqa: E402
 
 
@@ -314,7 +316,30 @@ def cmd_derivations(argv: list[str]) -> dict:
     return mod_derivation.derivations_summary(vault)
 
 
+def cmd_subject_dag_render(argv: list[str]) -> dict:
+    p = argparse.ArgumentParser(prog="dispatcher.py subject-dag-render")
+    p.add_argument("slug", help="dag slug (maps/<slug>.json, '.json' optional)")
+    p.add_argument("--vault", default=None)
+    args = p.parse_args(argv)
+    vault = Vault(root=args.vault) if args.vault else Vault()
+    return mod_subject_dag.render(vault.root, args.slug)
+
+
+def cmd_subject_dag_validate(argv: list[str]) -> dict:
+    p = argparse.ArgumentParser(prog="dispatcher.py subject-dag-validate")
+    p.add_argument("slug", help="dag slug (maps/<slug>.json, '.json' optional)")
+    p.add_argument("--vault", default=None)
+    args = p.parse_args(argv)
+    vault = Vault(root=args.vault) if args.vault else Vault()
+    dag = mod_subject_dag.load(vault.root, args.slug)
+    if dag is None:
+        return {"ok": False, "error": f"not found: {args.slug}"}
+    return mod_subject_dag.validate(dag, vault.root)
+
+
 COMMANDS = {
+    "subject-dag-render": cmd_subject_dag_render,
+    "subject-dag-validate": cmd_subject_dag_validate,
     "ingest": cmd_ingest,
     "card-add": cmd_card_add,
     "card-draft": cmd_card_draft,

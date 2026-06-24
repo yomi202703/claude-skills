@@ -4,7 +4,7 @@ description: Design or convert a classification/judgment prompt for Gemma 4 31B 
 
 ## 前提: Gemma 4 31B の性質
 
-- 繰り返し癖(repetition bias)がモデルレベルにある。文法強制(constrained decoding / JSON schema / grammar)をかけると EOS を塞いで無限ループ化する。
+- 繰り返し癖(repetition bias)がモデルレベルにある。文法強制(constrained decoding / JSON schema / grammar)をかけると EOS を塞いで無限ループ化する。vLLM は緩和済み(#40080 修正で grammar 制約時に repetition detection を自動有効化)だが、llama.cpp / ollama 等の他ランタイムとモデルレベルの傾向は残存するので、防御的設計(下記の型: 空許容＋evidence 必須)を default 維持する。詳細 `_dev/decisions.md` 2026-06-24。
 - 過信・埋め癖。「知らない」を言わず、もっともらしく埋める。埋め癖は知識の尾(ロングテール)で激しい — 固有名詞・正確な数値・専門深掘り・非英語・最新情報は持っていないのに埋める。逆に高頻度の常識と「原理から導ける推論」は信頼できる。→ 事実は入力で渡し、記憶を事実源にしない。
 - 同時判定数が増えるとオープン中型モデルは指数的に崩壊する(IFScale)。
 - ただし逆向きの力もある: 1件だけ孤立して判定(pointwise)させると多数派クラスへ逃げる(majority-label bias / pointwise laziness)。同じモデル・同じ全文入力でも「全件まとめて列挙(listwise)」なら正しく拾う事象を、1件ずつ聞くと最頻ラベルに倒す。列挙タスクは「全件の辻褄を合わせろ」という整合・対比の圧が thoroughness の強制力になっており、孤立させるとそれを失う。
@@ -43,3 +43,4 @@ description: Design or convert a classification/judgment prompt for Gemma 4 31B 
 4. evidence(根拠の番号)を必須化。埋め癖を抑える。
 5. 「該当なし」の逃げ道を明示。逃げ道が無いと無理に見つける。
 6. 事実(固有名詞・数値・専門)は入力本文の番号根拠でのみ判定。入力に無ければ該当なしへ。モデルの記憶を事実源にしない。
+7. オーナー承認を必ず仰ぐ(非交渉)。書いた/直したプロンプトは全文をオーナーに提示し、明示の承認を得てから初めて使用・配線・コミットする。Claude が自分のプロンプトを自己承認したり黙って投入したりしない。何をどう変えたかと理由を添える。提示はプロンプト本文そのもの(正解/期待出力を埋め込まない)。承認をスキップしない。(judge-loop G10 の発生源側での強制)

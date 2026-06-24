@@ -1,4 +1,4 @@
-"""Tests for recall-drill card capture (cards.py)."""
+"""Tests for card capture (cards.py)."""
 from __future__ import annotations
 
 import sys

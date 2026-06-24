@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Recall-drill card capture for ai-wiki.
+"""Card capture for ai-wiki.
 
-A drill *miss* (an answer that does not cover the source) is the trigger to
-persist a flashcard. The chat is ephemeral; the card is the durable asset, so
-the only thing this module does is append cards to a per-narrative deck that
-imports directly into Anki.
+A discovery-drill *divergence* (an answer that does not reach the source) is the
+trigger to persist a flashcard. The chat is ephemeral; the card is the durable
+asset, so the only thing this module does is append cards to a per-narrative deck
+that imports directly into Anki.
 
-Design decisions (deliberate, see SKILL.md "Recall drill"):
+Design decisions (deliberate, see SKILL.md "Cards" / discovery drill):
 - **Append-only. No dedup, no node bookkeeping.** A single narrative node can
   legitimately spawn many distinct questions (the chain, an analogy, a formula
   fill-in, a term cue...). Deduping or "marking a node done" would either

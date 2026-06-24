@@ -4,8 +4,7 @@
 
 背景: ユーザ要望「原典に忠実かつ AI ネイティブな変換 skill にしたい。最新の状態に」。
 grill-me で存在意義から各分岐を確定、deep-strict で prior art を調査、bake-off で
-最小検証してから実装。設計の全文は `_dev/REDESIGN_2026-06.md`、調査ログは
-`~/.claude/plans/deep-run-xlsx-llm-routing.md`。
+最小検証してから実装。設計の全文は `_dev/REDESIGN_2026-06.md`。
 
 ### 確定した方針
 
