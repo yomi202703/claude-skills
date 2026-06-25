@@ -40,7 +40,11 @@ class GateViolation(ValueError):
 
 class Store:
     def __init__(self, path: str):
-        self.db = sqlite3.connect(path)
+        # check_same_thread=False: the stdlib HTTPServer serves one request at a
+        # time, but not necessarily on the thread that opened the connection
+        # (tests, or a future ThreadingHTTPServer). Access stays serialized by
+        # the single-threaded server + the GIL, so this is safe here.
+        self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self._init()
 

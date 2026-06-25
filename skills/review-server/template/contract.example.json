@@ -15,11 +15,19 @@
   "axes": [
     {
       "key": "concern",
-      "label": "Concern",
+      "label": "懸念",
       "cardinality": "binary",
-      "vocabulary": ["flag", "none"],
+      "vocabulary": ["要確認", "問題なし"],
       "isolation": "screening",
-      "_comment": "Actionable flag is binary screening; strength stays as evidence (P1 standing recommendation)."
+      "_comment": "Actionable flag is binary screening; strength stays as evidence (P1 standing recommendation). Labels/vocabulary are the domain's own words (S2) — set them in whatever language the reviewers use."
+    },
+    {
+      "key": "evidence_quality",
+      "label": "根拠の質",
+      "cardinality": "ordinal",
+      "vocabulary": ["十分", "薄い", "なし"],
+      "isolation": "screening",
+      "_comment": "Second axis so the developer surface shows the config-driven, multi-axis case. Adapt or delete per domain."
     }
   ],
   "roles": {

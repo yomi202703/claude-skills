@@ -1,0 +1,8 @@
+# runtime artifacts — never part of the template (S5/S10)
+gt.db
+gt.db-*
+inbox/
+snapshot_meta.json
+review_dist_*.zip
+__pycache__/
+*.pyc
