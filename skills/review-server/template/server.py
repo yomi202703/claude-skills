@@ -31,6 +31,7 @@ import csv
 import html
 import json
 import os
+import sys
 import urllib.parse
 import zipfile
 from datetime import datetime, timezone
@@ -42,7 +43,12 @@ from store import GateViolation, Store
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONTRACT = json.load(open(os.path.join(HERE, "contract.example.json"), encoding="utf-8"))
 ADAPTER = DemoAdapter()
-STORE = Store(os.environ.get("REVIEW_DB", os.path.join(HERE, "gt.db")))
+DB_PATH = os.environ.get("REVIEW_DB", os.path.join(HERE, "gt.db"))
+STORE = Store(DB_PATH)
+# Runtime state lives WITH the instance (next to the DB), not in the skill —
+# auto-written by the server, gitignored, never hand-edited. A leftover runfile
+# means the last process crashed (atexit didn't fire) → doctor can flag it.
+RUNFILE = os.path.join(os.path.dirname(os.path.abspath(DB_PATH)), ".review-run.json")
 SOURCE = "live"  # flipped to "snapshot" by --snapshot marker (S10)
 # No auth by default: mode is chosen by route (/diag vs /review). Reviewer
 # attribution defaults to a constant; named/authenticated reviewers are a later
@@ -714,21 +720,92 @@ def make_package():
     print("packaged:", out, "(excluded answer DB / inbox / caches)")
 
 
+def bind_probe(host, base, handler, attempts=50):
+    """Bind from `base` upward to the first free port (probe-up on collision).
+    Binding HTTPServer directly (not a separate test socket) avoids the
+    TOCTOU race. Returns (httpd, port). The actual port is reported on screen
+    and written to the runfile — it is not assumed to equal `base`."""
+    last = None
+    for p in range(base, base + attempts):
+        try:
+            return HTTPServer((host, p), handler), p
+        except OSError as e:  # port in use → try the next one
+            last = e
+    raise SystemExit(f"空きポートが {base}..{base + attempts - 1} に見つかりません: {last}")
+
+
+def write_runfile(port):
+    import atexit
+    import signal
+    info = {
+        "port": port,
+        "pid": os.getpid(),
+        "cwd": os.getcwd(),
+        "db": os.path.abspath(DB_PATH),
+        "contract_version": CONTRACT.get("version", {}).get("contract"),
+        "source": SOURCE,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }
+    with open(RUNFILE, "w", encoding="utf-8") as f:
+        json.dump(info, f, ensure_ascii=False, indent=2)
+    atexit.register(lambda: os.path.exists(RUNFILE) and os.remove(RUNFILE))
+    # atexit fires on normal exit and on SIGINT (Ctrl-C → KeyboardInterrupt),
+    # but NOT on SIGTERM (`kill`). Without this, a cleanly-stopped server would
+    # leave a runfile and look like a crash. Translate SIGTERM into a clean
+    # exit so atexit runs and the runfile is removed.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
+
+def show_status():
+    """Answer 'what is running where' by DISCOVERY, not a stored ledger
+    (a hand-kept port ledger drifts — the akatsuki F2 trap). Cross-reference
+    live listeners (lsof) by cwd, the same identity signal used for :8030."""
+    import subprocess
+    if os.path.exists(RUNFILE):
+        try:
+            r = json.load(open(RUNFILE, encoding="utf-8"))
+            print(f"このインスタンスの runfile: :{r['port']} pid={r['pid']} cwd={r['cwd']} "
+                  f"(contract={r.get('contract_version')}, {r.get('started_at')})")
+        except Exception as e:  # noqa: BLE001
+            print(f"runfile 破損: {e!r}")
+    else:
+        print("runfile なし（このインスタンスは未起動、または正常終了済み）")
+    print("--- 稼働中の LISTEN ポート（lsof で発見、cwd で識別）---")
+    try:
+        out = subprocess.run(["lsof", "-nP", "-iTCP", "-sTCP:LISTEN"],
+                             capture_output=True, text=True, timeout=10).stdout
+        rows = [l for l in out.splitlines() if "python" in l.lower() or "Python" in l]
+        print("\n".join(rows) if rows else "  （python の LISTEN なし）")
+    except FileNotFoundError:
+        print("  lsof が無いため発見をスキップ")
+
+
 def main():
     global SOURCE
     ap = argparse.ArgumentParser()
+    # --port is the PREFERRED base; on collision we probe upward (8033→8034…).
+    # It lives as this default, not in the contract (contract = judgment
+    # vocabulary; port = deployment config).
     ap.add_argument("--port", type=int, default=8030)
     ap.add_argument("--snapshot", action="store_true")
     ap.add_argument("--package", action="store_true")
+    ap.add_argument("--status", action="store_true",
+                    help="稼働中サーバとこのインスタンスの runfile を表示")
     args = ap.parse_args()
     if args.snapshot:
         return make_snapshot()
     if args.package:
         return make_package()
+    if args.status:
+        return show_status()
     if os.environ.get("REVIEW_SOURCE") == "snapshot":
         SOURCE = "snapshot"
-    print(f"review-server on http://localhost:{args.port}/  (source={SOURCE})")
-    HTTPServer(("127.0.0.1", args.port), H).serve_forever()
+    httpd, port = bind_probe("127.0.0.1", args.port, H)
+    write_runfile(port)
+    if port != args.port:
+        print(f"注意: 希望ポート :{args.port} は使用中。:{port} で起動します。")
+    print(f"review-server on http://localhost:{port}/  (source={SOURCE})")
+    httpd.serve_forever()
 
 
 if __name__ == "__main__":

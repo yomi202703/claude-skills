@@ -1,6 +1,7 @@
 # runtime artifacts — never part of the template (S5/S10)
 gt.db
 gt.db-*
+.review-run.json
 inbox/
 snapshot_meta.json
 review_dist_*.zip

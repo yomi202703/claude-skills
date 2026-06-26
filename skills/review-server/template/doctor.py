@@ -87,6 +87,18 @@ try:
 except Exception as e:  # noqa: BLE001
     check("store.py loads + enforces gate", False, repr(e))
 
+# 6. runtime hygiene (S10): a leftover runfile means the last process crashed
+# (atexit didn't fire). Advisory warning, not a structural fail.
+runfile = os.path.join(os.path.dirname(os.path.abspath(
+    os.environ.get("REVIEW_DB", os.path.join(HERE, "gt.db")))), ".review-run.json")
+if os.path.exists(runfile):
+    try:
+        r = json.load(open(runfile, encoding="utf-8"))
+        print(f"  [warn] runfile 残存: :{r.get('port')} pid={r.get('pid')} "
+              f"— 前回プロセスが異常終了した可能性（`python3 server.py --status` で確認）")
+    except Exception:  # noqa: BLE001
+        print("  [warn] runfile 残存（破損） — 確認のこと")
+
 # report
 fails = [c for c in checks if not c[0]]
 for cond, name, detail in checks:
