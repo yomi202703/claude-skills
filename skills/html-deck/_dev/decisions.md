@@ -45,3 +45,15 @@
 - B(抽出一覧の正準化)を実施。適合性判定.html タブ2(録音から説明済み項目を抽出し未充足を一覧化)が抽出一覧の実物見本と判断。別ファイルに切り出すと sample_judgment_table.html と半分重複するため、重複は作らず「1サンプルが2系統を兼ねる(タブ1=判定表/タブ2=抽出一覧)」と位置づけ。
 - 抽出固有の型3つを SKILL.md「抽出一覧の型」に言語化: (1)抽出物そのものを payload に出す(件数で終わらせない) (2)「原典に無い」を独立ステータスにし non-finding を違反に格上げしない (3)土台データ行列で結論を裏付け、各セルは生カウント＋帯の二重符号化。
 - 4系統のうち判定表・抽出一覧は実物で充足。残るスコア表・リスク一覧は実案件素材が無く、仮データ化は horoscope(根拠なき見本)で方法論を歪めるため、実物が現れるまで Deferred。トリガ=実物の score/risk 資料の出現。consultant スキルの「データを読まない提案は星占い」と同根の判断。
+
+## 2026-06-27 プロのデータテーブル規約を craft 層だけ取り込み(視覚の作法)
+
+- ユーザー提起:「本物のデザイナーが作る html を web で参照した方が良いのでは」。妥当。ただし参照先の多くは操作型ダッシュボードで verdict 表示の既定(信号機グラデ・ステータスチップ)は当スキルと衝突するため、視覚 craft 層だけ取り情報設計の既定は捨てる、と線引き。
+- web 調査で確認できた一致/補強: (1)数値右揃え・等幅数字(プロの定石、template.html は既に準拠) (2)コントラスト4.5:1・色覚検証・色以外の担体併用 ← 3者レビュー最重要の二重符号化を外部 a11y 規約が独立に要求(裏書き) (3)色3〜5・意味固定=原則6 (4)Tufte データインク比/冗長インクを消せ=原則1・2の源流。
+- 衝突ゆえ「借りない」と明記: 全行への信号機グラデ(=氾濫)、アイコン/チップで生数値を隠す。
+- 反映: SKILL.md に「視覚の作法」節＋チェックリスト2行＋アンチパターン2件。
+- 出典: Pencil&Paper / Setproduct(データテーブル規約)、Tufte データインク比(geeksforgeeks 他)、Power BI / insightsoftware(条件付き書式・a11y・色数)。
+  https://www.pencilandpaper.io/articles/ux-pattern-analysis-enterprise-data-tables
+  https://stephaniewalter.design/blog/essential-resources-design-complex-data-tables/
+  https://www.geeksforgeeks.org/data-visualization/mastering-tuftes-data-visualization-principles/
+  https://insightsoftware.com/blog/effective-color-schemes-for-analytics-dashboards/
