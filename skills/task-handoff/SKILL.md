@@ -23,6 +23,7 @@ The core belief: mains communicate by FILES, not summaries. A subagent returns a
 - PM is a PLACE, not a session. The PM's reality is a directory (the project macro layer claude-md stands up — 成果物/), not a conversation. Any session that opens it weeks later recovers the whole picture. Do not create a third memory layer.
 - Validity ≠ consistency. When work returns, the PM makes an owner-level whole judgment of validity (including re-design — "these two streams should merge"). Version-stamp drift-checking is ONE input to that judgment, not its first gate, not its essence.
 - Reunification is human-driven. An independent stream does NOT auto-report-back to a parent. It records completion as a status row in the registry; a human opens the PM directory and collects uncollected-done tasks. A stream may run alone for a week. Every task dir must be fully persistent and cold-restartable with zero conversation memory.
+- Dispatch is optional and additive. A stream MAY be eagerly launched into its own full-fidelity session at branch time (e.g. a Tabby tab running `claude` with the task dir's TASK.md baked as the opening prompt — argv, not keystroke injection) instead of waiting for a cold open. This only accelerates the "parallel now" regime; the file contract stays the source of truth and reunification stays human-driven. See `_dev/decisions.md` (2026-06-27) for the mechanism and why it is layered on top, never a replacement.
 
 ## The handoff contract (fields)
 The contract is the one file an independent session reads to start cold. It carries exactly these fields. This skill's own issuing TASK.md is the live example of each:
@@ -46,8 +47,3 @@ One sheet, in the macro layer (成果物/), listing issued independent tasks so 
 - task name · output path · foundation version stamp · shared output schema · integration trigger · state.
 - state values: 発行済み（走行中） / 完了・未回収 / 回収済み.
 The only two things this skill adds to the macro layer are this registry and the routing of each returned task's validity verdict into decisions. Nothing else.
-
-## Routing from judge-loop
-judge-loop is a thin orchestrator that routes branch-worthy work to owning sub-skills. At a branch phase, it routes here in its PRODUCE · ROUTE · GRILL form, e.g.:
-- Branch-out · a per-stream task dir (foundation.md + TASK.md + seeded decision.md) + a registry row, each stream cold-restartable · task-handoff (grill-me gates the branch) · what fans out vs stays; integration target/trigger/schema.
-This skill produces the contract, micro-dir, and registry row; judge-loop keeps phase sequencing and gates. The returned-work validity verdict routes back to decisions per global governance (judge-loop G6).
