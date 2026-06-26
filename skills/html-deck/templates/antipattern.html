@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8">
+<title>取引判定結果一覧表(回転売買検知ロジックによる自動判定)</title>
+<style>
+  body { font-family: sans-serif; margin:40px; font-size:14px; color:#222; }
+  table { border-collapse:collapse; width:100%; }
+  th, td { padding:8px 10px; border:1px solid #ccc; text-align:center; }
+  th { background:#34495e; color:#fff; }
+  .chip-ng { background:#e74c3c; color:#fff; border-radius:10px; padding:2px 8px; }
+  .chip-ok { background:#bdc3c7; color:#333; border-radius:10px; padding:2px 8px; }
+  .legend { font-size:12px; color:#555; }
+</style></head>
+<body>
+<h1>取引判定結果一覧表(回転売買検知ロジックによる自動判定)</h1>
+<p>※本表は回転率 ∧ 手化率 が閾値を超えた取引を機械的に抽出したものであり、
+   直ちに違反を意味するものではありません。あくまで参考情報です。</p>
+<p class="legend">内部ランク凡例: I / D / G / N(数値が小さいほど優先)</p>
+
+<table>
+  <thead><tr>
+    <th>担当ID</th><th>担当</th><th>部店</th><th>内部ランク</th>
+    <th>あてはまった項目1</th><th>あてはまった項目2</th>
+    <th>回転率</th><th>回転率判定</th>
+    <th>手化率</th><th>手化率判定</th>
+    <th>総合判定</th><th>過剰検知参考件数</th>
+  </tr></thead>
+  <tbody>
+    <tr><td>EMP-0007</td><td>田中 一郎</td><td>新宿支店</td><td>I</td>
+        <td>回転率</td><td>手化率</td>
+        <td>7.8</td><td><span class="chip-ng">該当</span></td>
+        <td>9.2%</td><td><span class="chip-ng">該当</span></td>
+        <td><span class="chip-ng">要確認</span></td><td>3</td></tr>
+    <tr><td>EMP-0031</td><td>鈴木 健太</td><td>名古屋支店</td><td>D</td>
+        <td>回転率</td><td>手化率</td>
+        <td>5.2</td><td><span class="chip-ng">該当</span></td>
+        <td>3.1%</td><td><span class="chip-ok">非該当</span></td>
+        <td><span class="chip-ok">○</span></td><td>1</td></tr>
+    <tr><td>EMP-0012</td><td>佐藤 美咲</td><td>梅田支店</td><td>G</td>
+        <td>回転率</td><td>手化率</td>
+        <td>6.1</td><td><span class="chip-ng">該当</span></td>
+        <td>7.4%</td><td><span class="chip-ng">該当</span></td>
+        <td><span class="chip-ng">要確認</span></td><td>2</td></tr>
+    <tr><td>EMP-0044</td><td>山本 大樹</td><td>仙台支店</td><td>N</td>
+        <td>回転率</td><td>手化率</td>
+        <td>1.4</td><td><span class="chip-ok">非該当</span></td>
+        <td>1.1%</td><td><span class="chip-ok">非該当</span></td>
+        <td><span class="chip-ok">○</span></td><td>0</td></tr>
+  </tbody>
+</table>
+
+<h2>判定基準(再掲)</h2>
+<table>
+  <tr><th>軸</th><th>記号</th><th>閾値</th><th>判定</th></tr>
+  <tr><td>回転率</td><td>≥</td><td>4.0</td><td>該当</td></tr>
+  <tr><td>手化率</td><td>≥</td><td>5.0%</td><td>該当</td></tr>
+</table>
+</body></html>

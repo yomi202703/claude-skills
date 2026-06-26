@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8">
+<title>取引レビュー — 回転売買の確認対象</title>
+<style>
+  :root { --ink:#1f2a36; --head:#34495e; --hit-bg:#ffd9d6; --hit-ink:#9a0007;
+           --line:#d4dae0; --watch:#fff7f6; }
+  body { font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+          color:var(--ink); margin:48px; background:#f4f6f8; }
+  .card { background:#fff; border-radius:14px; padding:28px 32px; max-width:760px;
+           box-shadow:0 1px 3px rgba(20,30,45,.08),0 8px 24px rgba(20,30,45,.06); }
+  h1 { font-size:21px; margin:0 0 4px; letter-spacing:.02em; }
+  .lede { color:#5b6b7a; margin:0 0 22px; font-size:13.5px; line-height:1.6; }
+  table { border-collapse:separate; border-spacing:0; width:100%; font-size:14px; }
+  thead th { background:var(--head); color:#fff; font-weight:600; font-size:12px;
+              padding:11px 14px; text-align:right; letter-spacing:.04em; }
+  thead th:first-child { border-radius:8px 0 0 0; text-align:left; }
+  thead th:last-child  { border-radius:0 8px 0 0; }
+  thead th.l { text-align:left; }
+  tbody td { padding:11px 14px; text-align:right; border-bottom:1px solid var(--line); }
+  tbody td.name { text-align:left; font-weight:600; }
+  tbody td.branch { text-align:left; color:#5b6b7a; }
+  tbody td.num { font-variant-numeric:tabular-nums; }
+  tbody tr.watch { background:var(--watch); }
+  tbody td.hit { background:var(--hit-bg); color:var(--hit-ink); font-weight:700;
+                  box-shadow:inset 2px 0 0 #e8675f; }
+  tbody tr:last-child td:first-child { border-radius:0 0 0 8px; }
+  tbody tr:last-child td:last-child  { border-radius:0 0 8px 0; }
+  tbody tr:hover { filter:brightness(.985); }
+  .note { color:#7b8794; font-size:12px; margin-top:16px; }
+  @media print { body { background:#fff; margin:0; }
+                  .card { box-shadow:none; } tbody tr:hover { filter:none; } }
+</style></head>
+<body>
+<div class="card">
+<h1>取引レビュー — 回転売買の確認対象</h1>
+<p class="lede">回転率と手数料化率の両方が高い担当を上に。色のセルが基準超え、両方が色＝確認対象(3名)。</p>
+<table>
+  <thead><tr>
+    <th class="l">担当</th><th class="l">部店</th><th>口座数</th>
+    <th>年間回転率</th><th>手数料化率</th>
+  </tr></thead>
+  <tbody>
+<tr class="watch"><td class='name'>田中 一郎</td><td class='branch'>新宿支店</td><td class='num'>18</td><td class="num hit">7.8</td><td class="num hit">9.2%</td></tr>
+<tr class="watch"><td class='name'>佐藤 美咲</td><td class='branch'>梅田支店</td><td class='num'>24</td><td class="num hit">6.1</td><td class="num hit">7.4%</td></tr>
+<tr class="watch"><td class='name'>高橋 結衣</td><td class='branch'>横浜支店</td><td class='num'>12</td><td class="num hit">4.3</td><td class="num hit">6.0%</td></tr>
+<tr><td class='name'>鈴木 健太</td><td class='branch'>名古屋支店</td><td class='num'>31</td><td class="num hit">5.2</td><td class="num">3.1%</td></tr>
+<tr><td class='name'>渡辺 翔</td><td class='branch'>札幌支店</td><td class='num'>22</td><td class="num">3.9</td><td class="num hit">5.6%</td></tr>
+<tr><td class='name'>中村 楓</td><td class='branch'>神戸支店</td><td class='num'>15</td><td class="num">3.2</td><td class="num">2.9%</td></tr>
+<tr><td class='name'>伊藤 さくら</td><td class='branch'>福岡支店</td><td class='num'>19</td><td class="num">2.1</td><td class="num">2.4%</td></tr>
+<tr><td class='name'>山本 大樹</td><td class='branch'>仙台支店</td><td class='num'>27</td><td class="num">1.4</td><td class="num">1.1%</td></tr>
+  </tbody>
+</table>
+<p class="note">回転率 4.0 以上・手数料化率 5.0% 以上で着色。</p>
+</div>
+</body></html>
