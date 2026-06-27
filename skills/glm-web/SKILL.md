@@ -1,6 +1,6 @@
 ---
 name: glm-web
-description: Drive chat.z.ai (GLM / 智谱) from Claude over Chrome's DevTools Protocol — send a prompt, capture the reply — reusing a dedicated, signed-in Chrome profile with no API cost. A CN-native sibling of qwen-web / gemini-web / chatgpt-web (same shared Chrome, port 9333). Use to delegate to GLM (Zhipu's model, GLM-5.x): a CN-native, non-correlated opinion, and a second CN-native cross-check alongside qwen-web for cn-search seed-sowing (edge CN sources Western models miss). Triggers — "ask GLM", "GLMに聞いて", "智谱/z.aiに聞いて", "/glm-web".
+description: Drive chat.z.ai from Claude over Chrome's DevTools Protocol — send a prompt, capture the reply — reusing a dedicated, signed-in Chrome profile with no API cost. Use to delegate CODING / engineering work to GLM (Zhipu's GLM-5.x, strongest on code) — a non-correlated opinion on implementation, debugging, and code review. NOT the CN-native-knowledge eye
 ---
 
 Drives chat.z.ai in a dedicated Chrome instance shared with qwen-web / gemini-web / chatgpt-web (port 9333, profile `~/.gemini-chrome`) — sibling AI tabs in one signed-in browser. GLM's web chat is free, but side effects are real: it runs on the user's signed-in z.ai account and lands in its history.
