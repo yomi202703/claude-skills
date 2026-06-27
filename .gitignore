@@ -31,3 +31,6 @@
 **/.venv/
 **/.pytest_cache/
 **/.cache/
+
+# Personal-data skill — keep local, never publish (income / home station / visit log).
+/skills/onsen/
