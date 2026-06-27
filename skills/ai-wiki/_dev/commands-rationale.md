@@ -17,3 +17,9 @@ Why the active commands are shaped the way they are. Pulled out of SKILL.md: the
 
 ## subject-dag-render
 - JSON is the single source of truth; rendering from it (HTML untouched by hand) kills JSON/HTML double-keeping drift.
+- Static SVG, no `<script>`: the SVG is pre-rendered in Python and embedded directly; interactivity uses native mechanisms only (SVG `<title>` hover tooltips, CSS `:target` detail panel, `obsidian://` anchors). WHY: Obsidian's HTML viewer plugins do not execute inline scripts in any mode, so a JS-built SVG renders blank inside Obsidian. Static SVG renders identically in a browser and in-vault. The map is meant to open in an external browser via `maps/_index.md` (file:// links); the in-vault path is the fallback.
+- Render also regenerates `maps/_index.md` (table of all maps, file:// links) from every json — one command keeps the list current as maps grow. `subject-dags` does validate-all + the same index regen.
+
+## tree_globs / 未配線 tree 検出
+- Placing a later-added tree onto an existing map is judgment, not mechanizable: the choice is extend a node's `trees` vs. new skeleton node vs. re-cut topology — auto-attaching an unreferenced tree would break gestalt. So validate only *detects* the gap (a tree in the declared namespace that no node references) and warns; authoring decides placement.
+- Namespace is declared per-map (`tree_globs`), not inferred from slugs, because tree slug and map slug do not share a prefix (e.g. tree=`sangyo-soshiki-NN`, map=`産業組織論-dag`). Undeclared → no check, so no false positives.

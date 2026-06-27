@@ -68,7 +68,10 @@ def test_render_roundtrip(tmp_path):
     res = subject_dag.render(v, "demo-dag")
     assert res["ok"]
     html = (v / "maps" / "demo-dag.html").read_text(encoding="utf-8")
-    assert "const DAG=" in html and "function sel" in html
+    # static renderer: pre-rendered SVG, no script execution required
+    assert "<svg" in html and "<script" not in html
+    assert 'href="#d_X"' in html and 'id="d_X"' in html  # node ↔ detail anchor
+    assert "obsidian://open" in html  # tree link, no JS
     assert "demo" in html and "領域A" in html
 
 
@@ -80,3 +83,33 @@ def test_render_refuses_invalid(tmp_path):
         json.dumps(d, ensure_ascii=False), encoding="utf-8")
     res = subject_dag.render(v, "demo-dag")
     assert not res["ok"] and "report" in res
+
+
+def test_unwired_tree_warning(tmp_path):
+    # tree_globs 宣言の名前空間に、どのノードも参照しない tree があれば warning
+    v = _vault(tmp_path)
+    (v / "narratives" / "ch2.md").write_text("# ch2", encoding="utf-8")  # 未配線
+    (v / "narratives" / "other.md").write_text("# other", encoding="utf-8")  # 名前空間外
+    d = _dag()
+    d["tree_globs"] = ["ch*"]
+    r = subject_dag.validate(d, v)
+    assert r["ok"]  # 未配線は warning であって error ではない
+    assert r["unwired_trees"] == ["ch2"]  # ch1 は配線済み, other は対象外
+    assert any("ch2" in w for w in r["warnings"])
+
+
+def test_unwired_silent_without_globs(tmp_path):
+    v = _vault(tmp_path)
+    (v / "narratives" / "ch2.md").write_text("# ch2", encoding="utf-8")
+    r = subject_dag.validate(_dag(), v)  # tree_globs 無し → 検出しない
+    assert r["unwired_trees"] == []
+
+
+def test_regen_index_table(tmp_path):
+    v = _vault(tmp_path)
+    (v / "maps" / "demo-dag.json").write_text(
+        json.dumps(_dag(), ensure_ascii=False), encoding="utf-8")
+    out = subject_dag.regen_index(v)
+    md = Path(out).read_text(encoding="utf-8")
+    assert "| マップ | N | E |" in md
+    assert "[demo](file://" in md and "| 2 | 1 |" in md  # 2 nodes, 1 edge

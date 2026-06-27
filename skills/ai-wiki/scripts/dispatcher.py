@@ -21,6 +21,9 @@ Commands (v5):
     derivation-draft <source.md> --slug <s> --goal <g> [--anchor <n>] [--judge-model M]
                                  — source(+anchor)+goal → subgoal-labeled spine (judge-verified)
     derivations                  — validate derivations/, regenerate _index.md
+    subject-dag-render <slug>    — maps/<slug>.json → 静的 HTML + maps/_index.md 再生成
+    subject-dag-validate <slug>  — maps/<slug>.json を検証 (未配線 tree warning 含む)
+    subject-dags                 — 全マップ validate + maps/_index.md 再生成
 
 v5 paradigm (REQUIREMENTS §14): concepts/ 廃止、ai-digest 独立化。
 `enrich`, `project`, `coverage`, `research`, `ingest --from-digest`
@@ -337,9 +340,18 @@ def cmd_subject_dag_validate(argv: list[str]) -> dict:
     return mod_subject_dag.validate(dag, vault.root)
 
 
+def cmd_subject_dags(argv: list[str]) -> dict:
+    p = argparse.ArgumentParser(prog="dispatcher.py subject-dags")
+    p.add_argument("--vault", default=None)
+    args = p.parse_args(argv)
+    vault = Vault(root=args.vault) if args.vault else Vault()
+    return mod_subject_dag.validate_all(vault.root)
+
+
 COMMANDS = {
     "subject-dag-render": cmd_subject_dag_render,
     "subject-dag-validate": cmd_subject_dag_validate,
+    "subject-dags": cmd_subject_dags,
     "ingest": cmd_ingest,
     "card-add": cmd_card_add,
     "card-draft": cmd_card_draft,

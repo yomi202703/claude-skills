@@ -10,6 +10,10 @@
 
 JSON schema (maps/<slug>-dag.json):
   slug, title, subtitle?, kind="subject-dag",
+  tree_globs?: [ "<glob>", ... ]              # このマップが担当する tree 名前空間
+                                              # (例 ["sangyo-soshiki-*"])。宣言すると
+                                              # 一致する narratives で未参照のものを
+                                              # 「未配線 tree」warning で報告 (配置は判断)。
   regions: { <key>: <表示名>, ... }          # 宣言順が配色順
   nodes: [ { id, layer(数), col(数), region(key), title,
              tag?(右上の短ラベル 例"ch3"/"lec5"), desc,
@@ -17,6 +21,9 @@ JSON schema (maps/<slug>-dag.json):
   edges: [ { from, to, kind, label? } ]       # kind ∈ flow|join|fan|cross|dissolve
   legend?: [ <下部の凡例文>, ... ]
   motifs?/ai_usage?/contrast_with?            # AI 消費・ドキュメント用 (描画には不使用)
+
+render() は HTML を書き出すと同時に maps/_index.md (一覧表) を全 json から
+再生成する。HTML は JS 不要の静的 SVG (Obsidian の HTML viewer でも描画可)。
 
 stdlib only.
 """
@@ -60,6 +67,7 @@ def validate(dag: dict[str, Any], vault: Path) -> dict[str, Any]:
     edges = dag.get("edges", []) or []
     regions = dag.get("regions", {}) or {}
     ids: set[str] = set()
+    wired: set[str] = set()  # tree slugs referenced by some node
     for i, n in enumerate(nodes):
         for f in ("id", "layer", "col", "region", "title", "desc"):
             if f not in n:
@@ -75,6 +83,7 @@ def validate(dag: dict[str, Any], vault: Path) -> dict[str, Any]:
             if not slug:
                 errors.append(f"node {nid}: tree ref without slug")
                 continue
+            wired.add(slug)
             if not (vault / "narratives" / f"{slug}.md").is_file():
                 warnings.append(f"node {nid}: tree file not found: narratives/{slug}.md")
     for i, e in enumerate(edges):
@@ -84,6 +93,12 @@ def validate(dag: dict[str, Any], vault: Path) -> dict[str, Any]:
             errors.append(f"edge[{i}] to '{e.get('to')}' is not a node id")
         if e.get("kind") not in EDGE_KINDS:
             errors.append(f"edge[{i}] kind '{e.get('kind')}' not in {sorted(EDGE_KINDS)}")
+    # 未配線 tree 検出: tree_globs で宣言した名前空間の narrative のうち、
+    # どのノードからも参照されていないもの = 後から足された/載せ忘れの tree。
+    # 機械はこれを warning で知らせるだけ。どこに載せるかは authoring (判断)。
+    unwired = _unwired_trees(dag, vault, wired)
+    for slug in unwired:
+        warnings.append(f"未配線 tree (要 authoring 判断): narratives/{slug}.md")
     return {
         "ok": not errors,
         "errors": errors,
@@ -91,7 +106,28 @@ def validate(dag: dict[str, Any], vault: Path) -> dict[str, Any]:
         "node_count": len(nodes),
         "edge_count": len(edges),
         "region_count": len(regions),
+        "unwired_trees": unwired,
     }
+
+
+def _unwired_trees(dag: dict[str, Any], vault: Path, wired: set[str]) -> list[str]:
+    """tree_globs (任意) が宣言する名前空間内で、どのノードも参照しない tree slug。"""
+    import fnmatch
+
+    globs = dag.get("tree_globs") or []
+    if not globs:
+        return []
+    ndir = vault / "narratives"
+    if not ndir.is_dir():
+        return []
+    out: list[str] = []
+    for p in sorted(ndir.glob("*.md")):
+        slug = p.stem
+        if slug.startswith("_"):
+            continue
+        if any(fnmatch.fnmatch(slug, g) for g in globs) and slug not in wired:
+            out.append(slug)
+    return out
 
 
 # ── 配色 palette: region 宣言順に割り当てる ────────────────────────────
@@ -102,46 +138,166 @@ PALETTE = [
     ("#fdf1e3", "#dca35a"),
 ]
 
-_ENGINE = r"""
-const esc=s=>(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-const RKEYS=Object.keys(DAG.regions);
-const RC={};RKEYS.forEach((k,i)=>RC[k]=PALETTE[i%PALETTE.length]);
-const NODES=DAG.nodes, EDGES=DAG.edges, NMAP={};NODES.forEach(n=>NMAP[n.id]=n);
-const BW=152,BH=46,COLW=170,LAYH=92,MX=100,MY=44;
-NODES.forEach(n=>{n.cx=MX+n.col*COLW;n.cy=MY+n.layer*LAYH;});
-let maxX=0,maxY=0;NODES.forEach(n=>{maxX=Math.max(maxX,n.cx+BW/2);maxY=Math.max(maxY,n.cy+BH/2);});
-const W=maxX+60,H=maxY+58;
-function wrap(s,n){const o=[];let l='';for(const ch of s){l+=ch;if([...l].length>=n){o.push(l);l='';}}if(l)o.push(l);return o.slice(0,2);}
-const EK={flow:['#b3ada3',1.4,''],join:['#3f9e6b',2,''],fan:['#8a63d2',2,''],cross:['#d98a2b',1.3,'5 3'],dissolve:['#c2bdb4',1.3,'2 4']};
-function mk(id,col){return `<marker id="${id}" markerWidth=9 markerHeight=9 refX=6 refY=3 orient=auto><path d="M0,0 L6,3 L0,6" fill=none stroke="${col}" stroke-width=1.4/></marker>`;}
-let defs='';for(const k in EK)defs+=mk('m_'+k,EK[k][0]);
-let svg=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"><defs>${defs}</defs>`;
-for(const e of EDGES){const p=NMAP[e.from],c=NMAP[e.to];if(!p||!c)continue;
-  const x1=p.cx,y1=p.cy+BH/2,x2=c.cx,y2=c.cy-BH/2,my=(y1+y2)/2,st=EK[e.kind]||EK.flow;
-  svg+=`<path fill=none stroke="${st[0]}" stroke-width="${st[1]}" ${st[2]?`stroke-dasharray="${st[2]}"`:''} marker-end="url(#m_${e.kind})" d="M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}"/>`;
-  if(e.label)svg+=`<text x="${(x1+x2)/2}" y="${my}" text-anchor=middle font-size=9.5 fill="#9a6f1f">${esc(e.label)}</text>`;
+# ── 静的レンダラ (JS 不要) ───────────────────────────────────────────
+# Obsidian の HTML viewer は <script> を実行しない (inline も外部も)。
+# よって地図は Python 側で静的 SVG に事前描画し、HTML に直接埋め込む。
+# 双方向性は JS でなくネイティブ機能で出す:
+#   - ノード説明 = SVG <title> (ホバーで OS ネイティブのツールチップ)
+#   - クリック → 右パネルの該当詳細へ (アンカー #d_<id> + CSS :target でハイライト)
+#   - tree 遷移 = obsidian:// アンカー
+# これでブラウザでも Obsidian (HTML Reader) でも同一に見える。
+
+import urllib.parse as _ul
+
+_LAYOUT = dict(BW=152, BH=46, COLW=170, LAYH=92, MX=100, MY=44)
+_EK = {
+    "flow": ("#b3ada3", 1.4, ""),
+    "join": ("#3f9e6b", 2, ""),
+    "fan": ("#8a63d2", 2, ""),
+    "cross": ("#d98a2b", 1.3, "5 3"),
+    "dissolve": ("#c2bdb4", 1.3, "2 4"),
 }
-for(const n of NODES){const rc=RC[n.region]||PALETTE[0],x=n.cx-BW/2,y=n.cy-BH/2;
-  svg+=`<g class=box id="box_${n.id}" onclick="sel('${n.id}')"><rect x=${x} y=${y} width=${BW} height=${BH} rx=9 fill="${rc[0]}" stroke="${rc[1]}"/>`;
-  if(n.tag)svg+=`<text class=tag x=${x+BW-8} y=${y+13} text-anchor=end>${esc(n.tag)}</text>`;
-  const lines=wrap(n.title,13);
-  lines.forEach((ln,i)=>{svg+=`<text x=${n.cx} y=${n.cy+(lines.length>1?(i*14-2):4)} text-anchor=middle>${esc(ln)}</text>`;});
-  svg+=`</g>`;
-}
-(DAG.legend||[]).forEach((t,i)=>{svg+=`<text x=12 y=${H-12-((DAG.legend.length-1-i)*14)} font-size=11 fill="#777">${esc(t)}</text>`;});
-svg+='</svg>';
-document.getElementById('canvas').innerHTML=svg;
-function legendHTML(){return RKEYS.map(k=>`<div><span class=sw style="background:${RC[k][0]};border:1px solid ${RC[k][1]}"></span>${esc(DAG.regions[k])}</div>`).join('');}
-function refsHTML(n){const r=n.trees||[];if(!r.length)return'';
-  return `<div class=refs><div class=rlab>詳細へ ― 既存の章/講 tree</div>`+r.map(t=>{const slug=t.slug||t,label=t.label||slug;
-    return `<a class=ref href="obsidian://open?vault=${encodeURIComponent(DAG.vault||'ai-wiki')}&file=${encodeURIComponent('narratives/'+slug)}">${esc(label)} ↗</a>`;}).join('')+`</div>`;}
-let cur=null;
-function sel(id){const n=NMAP[id];if(!n)return;
-  if(cur)document.getElementById('box_'+cur).classList.remove('sel');
-  cur=id;document.getElementById('box_'+id).classList.add('sel');
-  document.getElementById('panel').innerHTML=`<h2>${esc(n.title)}</h2>${n.tag?`<div class=ch>${esc(n.tag)}</div>`:''}<div class=d>${esc(n.desc)}</div>`+refsHTML(n)+`<div class=tagrow>${legendHTML()}</div>`;}
-document.getElementById('legend').innerHTML=legendHTML();
-"""
+
+
+def _esc(s: str) -> str:
+    return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _num(x: float) -> str:
+    return str(int(x)) if float(x).is_integer() else str(round(x, 1))
+
+
+def _wrap(s: str, n: int) -> list[str]:
+    out: list[str] = []
+    line = ""
+    for ch in s or "":
+        line += ch
+        if len(line) >= n:
+            out.append(line)
+            line = ""
+    if line:
+        out.append(line)
+    return out[:2]
+
+
+def _build_svg(dag: dict[str, Any], rc: dict[str, tuple]) -> str:
+    L = _LAYOUT
+    nodes = dag.get("nodes", []) or []
+    edges = dag.get("edges", []) or []
+    pos: dict[str, tuple[float, float]] = {}
+    nmap: dict[str, dict] = {}
+    for n in nodes:
+        cx = L["MX"] + n["col"] * L["COLW"]
+        cy = L["MY"] + n["layer"] * L["LAYH"]
+        pos[n["id"]] = (cx, cy)
+        nmap[n["id"]] = n
+    max_x = max((cx + L["BW"] / 2 for cx, _ in pos.values()), default=0)
+    max_y = max((cy + L["BH"] / 2 for _, cy in pos.values()), default=0)
+    W, H = max_x + 60, max_y + 58
+
+    defs = "".join(
+        f'<marker id="m_{k}" markerWidth="9" markerHeight="9" refX="6" refY="3" '
+        f'orient="auto"><path d="M0,0 L6,3 L0,6" fill="none" stroke="{spec[0]}" '
+        f'stroke-width="1.4"/></marker>'
+        for k, spec in _EK.items()
+    )
+    parts = [
+        f'<svg viewBox="0 0 {_num(W)} {_num(H)}" xmlns="http://www.w3.org/2000/svg">'
+        f"<defs>{defs}</defs>"
+    ]
+
+    for e in edges:
+        p, c = pos.get(e.get("from")), pos.get(e.get("to"))
+        if not p or not c:
+            continue
+        x1, y1 = p[0], p[1] + L["BH"] / 2
+        x2, y2 = c[0], c[1] - L["BH"] / 2
+        my = (y1 + y2) / 2
+        col, wid, dash = _EK.get(e.get("kind"), _EK["flow"])
+        da = f' stroke-dasharray="{dash}"' if dash else ""
+        parts.append(
+            f'<path fill="none" stroke="{col}" stroke-width="{wid}"{da} '
+            f'marker-end="url(#m_{e.get("kind", "flow")})" '
+            f"d=\"M{_num(x1)},{_num(y1)} C{_num(x1)},{_num(my)} "
+            f'{_num(x2)},{_num(my)} {_num(x2)},{_num(y2)}"/>'
+        )
+        if e.get("label"):
+            parts.append(
+                f'<text x="{_num((x1 + x2) / 2)}" y="{_num(my)}" text-anchor="middle" '
+                f'font-size="9.5" fill="#9a6f1f">{_esc(e["label"])}</text>'
+            )
+
+    for n in nodes:
+        cx, cy = pos[n["id"]]
+        fill, stroke = rc.get(n["region"], PALETTE[0])
+        x, y = cx - L["BW"] / 2, cy - L["BH"] / 2
+        parts.append(f'<a href="#d_{_esc(n["id"])}"><g class="box">')
+        parts.append(f'<title>{_esc(n.get("desc", ""))}</title>')
+        parts.append(
+            f'<rect x="{_num(x)}" y="{_num(y)}" width="{L["BW"]}" height="{L["BH"]}" '
+            f'rx="9" fill="{fill}" stroke="{stroke}"/>'
+        )
+        if n.get("tag"):
+            parts.append(
+                f'<text class="tag" x="{_num(x + L["BW"] - 8)}" y="{_num(y + 13)}" '
+                f'text-anchor="end">{_esc(n["tag"])}</text>'
+            )
+        lines = _wrap(n["title"], 13)
+        for i, ln in enumerate(lines):
+            dy = (i * 14 - 2) if len(lines) > 1 else 4
+            parts.append(
+                f'<text x="{_num(cx)}" y="{_num(cy + dy)}" '
+                f'text-anchor="middle">{_esc(ln)}</text>'
+            )
+        parts.append("</g></a>")
+
+    legend = dag.get("legend", []) or []
+    for i, t in enumerate(legend):
+        ly = H - 12 - (len(legend) - 1 - i) * 14
+        parts.append(
+            f'<text x="12" y="{_num(ly)}" font-size="11" fill="#777">{_esc(t)}</text>'
+        )
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def _build_legend(dag: dict[str, Any], rc: dict[str, tuple]) -> str:
+    rows = "".join(
+        f'<div><span class="sw" style="background:{rc[k][0]};border:1px solid '
+        f'{rc[k][1]}"></span>{_esc(name)}</div>'
+        for k, name in (dag.get("regions", {}) or {}).items()
+    )
+    return rows
+
+
+def _build_panel(dag: dict[str, Any], rc: dict[str, tuple], vault_name: str) -> str:
+    out = ['<div class="hint">ノードにホバーで要約 / クリックで下に詳細</div>']
+    for n in dag.get("nodes", []) or []:
+        fill, stroke = rc.get(n["region"], PALETTE[0])
+        refs = ""
+        for t in n.get("trees", []) or []:
+            slug = t.get("slug") if isinstance(t, dict) else t
+            if not slug:
+                continue
+            label = (t.get("label") if isinstance(t, dict) else None) or slug
+            href = (
+                f"obsidian://open?vault={_ul.quote(vault_name)}"
+                f"&file={_ul.quote('narratives/' + slug)}"
+            )
+            refs += f'<a class="ref" href="{href}">{_esc(label)} ↗</a>'
+        refs_block = (
+            f'<div class="refs"><div class="rlab">詳細へ ― 章/講 tree</div>{refs}</div>'
+            if refs
+            else ""
+        )
+        tag = f'<span class="dch">{_esc(n["tag"])}</span>' if n.get("tag") else ""
+        out.append(
+            f'<div class="detail" id="d_{_esc(n["id"])}">'
+            f'<div class="dh"><span class="dot" style="background:{fill};'
+            f'border:1px solid {stroke}"></span><b>{_esc(n["title"])}</b>{tag}</div>'
+            f'<div class="dd">{_esc(n.get("desc", ""))}</div>{refs_block}</div>'
+        )
+    return "".join(out)
 
 _CSS = r"""
 :root{font-family:-apple-system,"Hiragino Kaku Gothic ProN",sans-serif}
@@ -153,36 +309,44 @@ header .sub{font-size:12px;color:#888}
 .wrap{display:flex;height:calc(100vh - 56px)}
 .canvas{flex:1;overflow:auto;padding:10px}
 svg{width:100%;height:auto;display:block}
-.box{cursor:pointer}.box rect{stroke-width:1.5;transition:.12s}
-.box:hover rect{filter:brightness(.96)}.box.sel rect{stroke:#1c1c1c;stroke-width:2.6}
+svg a{cursor:pointer}
+.box rect{stroke-width:1.5;transition:.12s}
+.box:hover rect{filter:brightness(.94);stroke:#1c1c1c}
 .box text{font-size:11px;fill:#1c1c1c;pointer-events:none}.box .tag{font-size:9px;fill:#9a958c}
-.panel{width:300px;border-left:1px solid #e3e0da;background:#fff;padding:16px 18px;overflow:auto}
-.panel h2{font-size:14px;margin:0 0 6px}.panel .ch{font-size:12px;color:#9a958c;margin-bottom:8px}
-.panel .d{font-size:13px;line-height:1.8}.panel .ph{color:#aaa;font-size:13px;margin-top:30px}
-.refs{margin-top:16px}.refs .rlab{font-size:11px;color:#999;margin-bottom:6px}
-.ref{display:block;font-size:12.5px;color:#2f6f4f;text-decoration:none;padding:7px 10px;border:1px solid #e3e0da;border-radius:7px;margin:5px 0;background:#fff}
+.panel{width:312px;border-left:1px solid #e3e0da;background:#fff;padding:14px 16px;overflow:auto}
+.panel .hint{color:#aaa;font-size:11.5px;margin-bottom:12px;border-bottom:1px solid #eee;padding-bottom:10px}
+.detail{padding:9px 10px;border-radius:8px;margin:4px -4px;scroll-margin-top:10px}
+.detail:target{background:#fbf6e3;box-shadow:0 0 0 2px #cdb95e inset}
+.detail .dh{font-size:13px;margin-bottom:5px}
+.detail .dh b{font-weight:600}
+.detail .dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;vertical-align:0}
+.detail .dch{font-size:11px;color:#9a958c;margin-left:6px}
+.detail .dd{font-size:12.5px;line-height:1.75;color:#333}
+.refs{margin-top:9px}.refs .rlab{font-size:10.5px;color:#999;margin-bottom:5px}
+.ref{display:block;font-size:12px;color:#2f6f4f;text-decoration:none;padding:6px 9px;border:1px solid #e3e0da;border-radius:7px;margin:4px 0;background:#fff}
 .ref:hover{background:#f1f8f3}
-.tagrow{margin-top:14px;font-size:11.5px;color:#888;border-top:1px solid #eee;padding-top:10px;line-height:1.9}
-.sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.lg{margin-top:16px;font-size:11.5px;color:#888;border-top:1px solid #eee;padding-top:10px;line-height:1.9}
+.lg .sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 """
 
 
 def render_html(dag: dict[str, Any], vault_name: str = "ai-wiki") -> str:
     dag = dict(dag)
     dag.setdefault("vault", vault_name)
-    title = dag.get("title", dag.get("slug", "subject DAG"))
-    sub = dag.get("subtitle", dag.get("design", ""))
-    palette_js = json.dumps(PALETTE)
-    dag_js = json.dumps(dag, ensure_ascii=False)
+    title = _esc(dag.get("title", dag.get("slug", "subject DAG")))
+    sub = _esc(dag.get("subtitle", dag.get("design", "")))
+    rkeys = list((dag.get("regions", {}) or {}).keys())
+    rc = {k: PALETTE[i % len(PALETTE)] for i, k in enumerate(rkeys)}
+    svg = _build_svg(dag, rc)
+    panel = _build_panel(dag, rc, vault_name)
+    legend = _build_legend(dag, rc)
     return (
         "<!doctype html><html lang=ja><head><meta charset=utf-8>"
         '<meta name=viewport content="width=device-width,initial-scale=1">'
         f"<title>{title}</title><style>{_CSS}</style></head><body>"
-        f"<header><h1>{title}</h1><div class=sub>{sub}</div></header>"
-        '<div class=wrap><div class=canvas id=canvas></div>'
-        '<div class=panel id=panel><div class=ph>ノードを押すと中身が出る</div>'
-        '<div class=tagrow id=legend></div></div></div>'
-        f"<script>const PALETTE={palette_js};const DAG={dag_js};{_ENGINE}</script>"
+        f'<header><h1>{title}</h1><div class="sub">{sub}</div></header>'
+        f'<div class="wrap"><div class="canvas">{svg}</div>'
+        f'<div class="panel">{panel}<div class="lg">{legend}</div></div></div>'
         "</body></html>"
     )
 
@@ -196,4 +360,62 @@ def render(vault: Path, slug: str) -> dict[str, Any]:
         return {"ok": False, "error": "validation failed", "report": report}
     out = html_path(vault, dag.get("slug", slug))
     out.write_text(render_html(dag, vault.name), encoding="utf-8")
-    return {"ok": True, "html": str(out), "report": report}
+    index = regen_index(vault)
+    return {"ok": True, "html": str(out), "report": report, "index": index}
+
+
+def regen_index(vault: Path) -> str:
+    """maps/ の全 <slug>.json から maps/_index.md (表) を作り直す。
+
+    機械の責務。新しいマップを足して render すれば一覧が常に最新になる。
+    リンクは file:// (パーセントエンコード) — Obsidian から外部ブラウザで開く。
+    """
+    mdir = maps_dir(vault)
+    rows: list[tuple[str, str, int, int]] = []
+    for p in sorted(mdir.glob("*.json")):
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        slug = p.stem
+        title = str(d.get("title", slug)).replace("|", "/")
+        url = "file://" + _ul.quote(str(mdir / f"{slug}.html"))
+        rows.append((title, url, len(d.get("nodes", []) or []), len(d.get("edges", []) or [])))
+    lines = [
+        "# 教科 DAG マップ一覧",
+        "",
+        "各マップは自己完結の静的 HTML(俯瞰地図)。リンクを開くと外部ブラウザで表示。",
+        "",
+        "| マップ | N | E |",
+        "|---|--:|--:|",
+    ]
+    for title, url, n, e in rows:
+        lines.append(f"| [{title}]({url}) | {n} | {e} |")
+    out = mdir / "_index.md"
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return str(out)
+
+
+def validate_all(vault: Path) -> dict[str, Any]:
+    """全マップを validate し、_index.md を再生成する (narratives/derivations と対)。"""
+    mdir = maps_dir(vault)
+    maps: list[dict[str, Any]] = []
+    ok = True
+    for p in sorted(mdir.glob("*.json")):
+        slug = p.stem
+        dag = load(vault, slug)
+        if dag is None:
+            maps.append({"slug": slug, "ok": False, "error": "load failed"})
+            ok = False
+            continue
+        rep = validate(dag, vault)
+        ok = ok and rep["ok"]
+        maps.append({
+            "slug": slug,
+            "ok": rep["ok"],
+            "errors": rep["errors"],
+            "warnings": rep["warnings"],
+            "unwired_trees": rep.get("unwired_trees", []),
+        })
+    index = regen_index(vault)
+    return {"ok": ok, "maps": maps, "index": index}
