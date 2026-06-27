@@ -1,5 +1,30 @@
 # XLSX Skill self-improvement changelog
 
+## 2026-06-25 — theme / indexed 色の解決（色脱落バグ修正）
+
+背景: ユーザ指摘「色を反映していない。色が重要なケースが多すぎる」。jibun-de で
+corpus を実 resolve して裏取り。`_style_attr`/`_hex6` は ARGB 直指定 (color.type=="rgb")
+しか拾えず、Excel の主流である theme 色（color.theme + tint）と legacy indexed を
+全て None 扱いで落としていた。忠実性 hard ゲートは文字列のみ照合し色を見ないため
+脱落が素通りしていた。
+
+実証（非白 theme 塗りの脱落数 / corpus 全 resolve）:
+- 正解データ20260415: 98 セル全損（色シグナルが light green #E2F0D9 のみ＝色情報が丸ごと不可視）
+- transposed_field_major: 81（緑 #E2F0D9/#C5E0B4・黄 #FFF2CC・灰）
+- 業務概要・QA: 1481（灰系セクション地色 + 青 #BDD7EE）
+- 法人契約チェックシート: 0（theme 塗り 496 は全部白＝白除外が妥当。RGB 非白 53 は従来どおり出力）
+- indexed は corpus に存在せず（0）
+
+修正:
+- `xlsx_to_html.py` に `_theme_palette`（`wb.loaded_theme` から theme1.xml を parse、
+  SpreadsheetML の index 入れ替え lt1↔dk1 / lt2↔dk2 を考慮）+ `_apply_tint`（HLS 輝度）
+  + `_resolve_color`（rgb / theme+tint / indexed の3形式を解決、indexed 64/65 は auto で除外）。
+- `_style_attr(cell, palette)` 化。白 (#FFFFFF) 除外はノイズ抑制として継続。
+- パレットは workbook に1度だけキャッシュ。
+- golden 回帰を色込みで再生成（上記3ファイルの sha のみ変化、faithfulness は全件 100% 不変、
+  spans/tr 不変＝構造非破壊を確認）。色の回帰ガードはこの決定論 golden に委ねる
+  （runtime verify ゲートへの色チェック追加は白/近白除外で false fail を生むため見送り）。
+
 ## 2026-06-22 — 全面再設計 着手（設計 + 変換器ユニット）
 
 背景: ユーザ要望「原典に忠実かつ AI ネイティブな変換 skill にしたい。最新の状態に」。

@@ -1,10 +1,10 @@
 正解データの確認:
   faithful: 875/875
-  sha256_16: d69930b98598ad4d
+  sha256_16: c0272453ffa5b837
   spans: 2
   tr: 101
 統合Q&A:
   faithful: 291/291
-  sha256_16: c9d90b08e0cd2ddf
+  sha256_16: f5c08f135aaab2a8
   spans: 0
   tr: 30

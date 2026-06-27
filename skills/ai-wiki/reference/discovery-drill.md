@@ -25,16 +25,33 @@ a faded-worked-example ladder.
 
 1. Sealed answer key. You open `narratives/<slug>.md`; the learner never sees it until
    they commit. No reveal-before-commit, ever. "分からない" is a valid commit.
-2. On a wrong/partial answer, give only why their path diverges — backward-looking,
-   about the path they committed. Never the correct answer, and never a forward
-   pointer (the next move, the tool to use, where to look). Reward the on-target
-   thread, then re-pose the same edge. Closing the last gap is the learner's job —
-   this is what separates discovery from lecturing.
+2. On a wrong/partial answer, split it. Affirm exactly the part that is genuinely
+   correct — only that part, no charitable inflation beyond what they actually
+   committed. Then refute the wrong part by reasoning: drive the logical negation of
+   why that path fails, step by step. Both stay backward-looking, about the path they
+   committed — refutation dismantles their move, it never hands the correct answer or a
+   forward pointer (the next move, the tool to use, where to look). Re-pose the same
+   edge. Closing the last gap is the learner's job — this is what separates discovery
+   from lecturing.
+
+   Bound the refutation's *material*: use ONLY the learner's prior commits and the
+   problem statement. "Refute by reasoning" otherwise reads as license to walk the
+   solution out — and a leak through this channel doesn't feel like handing the answer,
+   but is. Allowed: expose a contradiction between two things they already said, or with
+   the given conditions; "that conclusion isn't supported yet"; re-pose the edge.
+   Forbidden (these ARE the answer): computing a not-yet-stated value; naming the next
+   unit/equation/graph-position to look at; a new decomposition; "first…", "if you look
+   at…"; a concept the learner hasn't named. A contradiction inside their own words
+   leaks nothing — prefer it. (Learner: "gain needs price below 199" after committing
+   "buys 2 at 200" → refute by that contradiction, never by computing the first unit's
+   250.)
 3. Hints are pull, never push. Add scaffold only when the learner asks ("ヒント"), one
    notch at a time; raise the fade back once they recover. Never volunteer it. When
    unsure, give less and wait — silence is allowed. Default to under-helping.
 
-Before sending any diagnosis, strip every sentence that points toward the answer.
+Before sending any diagnosis, leak-check the finished draft (more reliable than
+restraint mid-generation) and cut any sentence carrying: (a) a value not already stated
+by the learner or the problem; (b) a pointer to where to look next. When in doubt, cut.
 
 ## The DAG generates the questions
 
@@ -60,8 +77,8 @@ its `kind` fixes the type:
    the learner can take a first step, then halt. Don't prefill their answer.
 2. They commit. Diagnose against the sealed tree.
    - On target → confirm, name the concept the tree gives it, advance.
-   - Divergent → invariant #2: reason for the divergence only, salvage what was right,
-     re-pose the same edge. Loop until they reach it.
+   - Divergent → invariant #2: affirm exactly the correct part, then refute the wrong
+     part by reasoning, re-pose the same edge. Loop until they reach it.
 3. When they reach it, capture what the *specific* divergence revealed as a card
    (`card-add --slug <s>`) — the misconception they actually hit (e.g. "reversed the
    arrow: price→utility instead of utility→willingness-to-pay"), which the from-tree
@@ -71,6 +88,8 @@ its `kind` fixes the type:
 
 ## Calibration
 
+The job is to protect the learner's next unaided commit, not to move them toward the
+answer; closing the gap in one turn is the failure mode. The loop is many cheap turns.
 Productive failure is expensive; spend it where it pays.
 
 - Full depth on `fan` edges (an assumption is dropped) and `join` edges (a benchmark

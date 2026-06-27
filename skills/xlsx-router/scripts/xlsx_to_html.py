@@ -21,6 +21,7 @@ forward-fill で結合を潰さない）。原典構造をそのまま写し、�
   python3 xlsx_to_html.py foo.xlsx --sheet S --out data/foo/s.html
 """
 import argparse
+import colorsys
 import datetime
 import html as _html
 import json
@@ -28,8 +29,10 @@ import re
 import sys
 from pathlib import Path
 from typing import Optional
+from xml.etree import ElementTree as ET
 
 import openpyxl
+from openpyxl.styles.colors import COLOR_INDEX
 
 sys.path.insert(0, str(Path(__file__).parent))
 import xlsx_primitives as _prim  # noqa: E402
@@ -63,19 +66,99 @@ def _date_aware(v, fmt):
     return v
 
 
+_A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+# clrScheme XML order is dk1,lt1,dk2,lt2,...; the SpreadsheetML `theme` index
+# swaps the first two pairs (0=lt1/background, 1=dk1/text, 2=lt2, 3=dk2).
+_THEME_INDEX_ORDER = ("lt1", "dk1", "lt2", "dk2", "accent1", "accent2",
+                      "accent3", "accent4", "accent5", "accent6", "hlink", "folHlink")
+
+
+def _theme_palette(wb) -> list:
+    """Resolve the workbook theme to 12 'RRGGBB' strings in SpreadsheetML index
+    order. openpyxl never resolves theme colors to RGB, so we parse the raw
+    xl/theme/theme1.xml it keeps in ``wb.loaded_theme``. Cached on the workbook.
+    Returns [] when no theme is available."""
+    cached = getattr(wb, "_xlsxrouter_palette", None)
+    if cached is not None:
+        return cached
+    palette: list = []
+    raw = getattr(wb, "loaded_theme", None)
+    if raw:
+        try:
+            scheme = ET.fromstring(raw).find(".//{%s}clrScheme" % _A_NS)
+            g = {}
+            for n in _THEME_INDEX_ORDER + ("dk1", "lt1", "dk2", "lt2"):
+                el = scheme.find("{%s}%s" % (_A_NS, n)) if scheme is not None else None
+                if el is None:
+                    continue
+                srgb = el.find("{%s}srgbClr" % _A_NS)
+                sysc = el.find("{%s}sysClr" % _A_NS)
+                val = srgb.get("val") if srgb is not None else None
+                if val:
+                    g[n] = val.upper()
+                elif sysc is not None:
+                    g[n] = (sysc.get("lastClr") or "000000").upper()
+            palette = [g.get(n) for n in _THEME_INDEX_ORDER]
+        except Exception:
+            palette = []
+    try:
+        wb._xlsxrouter_palette = palette
+    except Exception:
+        pass
+    return palette
+
+
+def _apply_tint(hex6: str, tint: float) -> str:
+    """Apply an OOXML tint (-1..1) to an 'RRGGBB' color via HLS luminance.
+    tint<0 darkens, tint>0 lightens (mirrors Excel's theme tint rendering)."""
+    if not tint:
+        return hex6
+    try:
+        r, g, b = (int(hex6[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    except Exception:
+        return hex6
+    h, l, s = colorsys.rgb_to_hls(r, g, b)
+    l = l * (1 + tint) if tint < 0 else l * (1 - tint) + tint
+    r, g, b = colorsys.hls_to_rgb(h, max(0.0, min(1.0, l)), s)
+    return "%02X%02X%02X" % (round(r * 255), round(g * 255), round(b * 255))
+
+
 def _hex6(color):
-    """Return 'RRGGBB' from an openpyxl Color if it carries a usable ARGB rgb, else None."""
+    """Return 'RRGGBB' from an openpyxl Color's explicit ARGB rgb, else None."""
     rgb = getattr(color, "rgb", None)
     if isinstance(rgb, str) and len(rgb) == 8:
         return rgb[2:].upper()
     return None
 
 
-def _style_attr(cell) -> str:
+def _resolve_color(color, palette) -> Optional[str]:
+    """Resolve any openpyxl Color to 'RRGGBB'. Handles the three forms Excel
+    actually emits: explicit rgb, theme index + tint (the dominant form for
+    palette swatches — dropped entirely before this), and legacy indexed."""
+    if color is None:
+        return None
+    ctype = getattr(color, "type", None)
+    if ctype == "theme":
+        idx = getattr(color, "theme", None)
+        if isinstance(idx, int) and palette and 0 <= idx < len(palette) and palette[idx]:
+            return _apply_tint(palette[idx], getattr(color, "tint", 0.0) or 0.0)
+        return None
+    if ctype == "indexed":
+        idx = getattr(color, "indexed", None)
+        # 64/65 are the system fg/bg sentinels (auto) — not real colors.
+        if isinstance(idx, int) and idx not in (64, 65) and 0 <= idx < len(COLOR_INDEX):
+            argb = COLOR_INDEX[idx]
+            if isinstance(argb, str) and len(argb) == 8:
+                return argb[2:].upper()
+        return None
+    return _hex6(color)
+
+
+def _style_attr(cell, palette=None) -> str:
     parts = []
     try:
         if cell.font and cell.font.color is not None:
-            h = _hex6(cell.font.color)
+            h = _resolve_color(cell.font.color, palette)
             if h and h != "000000":
                 parts.append(f"color:#{h}")
     except Exception:
@@ -83,7 +166,7 @@ def _style_attr(cell) -> str:
     try:
         fill = cell.fill
         if fill is not None and getattr(fill, "patternType", None) == "solid":
-            h = _hex6(fill.fgColor)
+            h = _resolve_color(fill.fgColor, palette)
             if h and h not in ("FFFFFF", "000000"):
                 parts.append(f"background:#{h}")
     except Exception:
@@ -148,6 +231,7 @@ def _drawing_annotations(path: Path, sheet: str) -> dict:
 
 def sheet_to_html(ws, annotations: Optional[dict] = None, bounds=None) -> str:
     annotations = annotations or {}
+    palette = _theme_palette(ws.parent) if getattr(ws, "parent", None) is not None else []
     last_r, last_c = bounds if bounds else _used_bounds(ws)
 
     span = {}
@@ -193,7 +277,7 @@ def sheet_to_html(ws, annotations: Optional[dict] = None, bounds=None) -> str:
                     attrs += f' rowspan="{rs}"'
                 if cs > 1:
                     attrs += f' colspan="{cs}"'
-            attrs += _style_attr(cell)
+            attrs += _style_attr(cell, palette)
             cells.append(f"<td{attrs}>{txt}{note}</td>")
         rows_html.append("  <tr>" + "".join(cells) + "</tr>")
 

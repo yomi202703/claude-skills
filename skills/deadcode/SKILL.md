@@ -34,9 +34,9 @@ Load `LENSES`, `TEST_CMD`, `FRAMEWORK_HOOKS`, `ENTRYPOINTS` from the framework f
    - exit 0 → continue
    - no tests configured → AskUserQuestion: "No tests found. Proceed conservatively with grep + typecheck only?". yes → replace R1 with "grep + typecheck green" (`status: no_tests_conservative`)
    - exit ≠ 0 → exit with `status: tests_red_before_start`
-2. Capture the **typecheck baseline**: run the typechecker now and record the pre-existing error set. The deletion gate (Phase 3a) is "no *new* errors versus this baseline", not "absolute green" — a repo that already has unrelated typecheck errors must not make every deletion look unsafe.
+2. Capture the typecheck baseline: run the typechecker now and record the pre-existing error set. The deletion gate (Phase 3a) is "no new errors versus this baseline", not "absolute green" — a repo that already has unrelated typecheck errors must not make every deletion look unsafe.
 3. `git add -A && git commit -m "wip: pre-deadcode-scan snapshot" --allow-empty`
-4. Run **all `LENSES` in parallel**, UNION the outputs, dedup by `(file, line, name)`. Each lens has `name` and `safety` (1 = safest, 3 = riskiest). Carry `lens` and `safety` on every finding.
+4. Run all `LENSES` in parallel, union the outputs, dedup by `(file, line, name)`. Each lens has `name` and `safety` (1 = safest, 3 = riskiest). Carry `lens` and `safety` on every finding.
    - A lens that is `command not found` → AskUserQuestion to run `bash ~/.claude/skills/deadcode/setup.sh --<lang>`. no → `status: aborted_no_tool`.
    - A lens that times out, crashes, or returns malformed/non-JSON output → record `{lens, status: "error", detail}`, drop only that lens's findings, and continue with the others. Never treat a crashed lens as "zero findings = clean".
 
@@ -56,7 +56,7 @@ For each finding, decide silently (do not surface to user):
 
 ## Phase 2.5 — Runtime-evidence gate (safety:3 and low_confidence)
 
-`safety: 1–2` candidates skip this gate by design: unused imports / variables, compiler-proven unreachable branches, and orphan files are *statically* decidable, so a passing typecheck is sufficient proof for them. `safety: 3` (functions / methods / classes) and any `low_confidence` candidate are not statically decidable — liveness for dynamic code is undecidable in general — so they need evidence they are actually unexecuted before deletion.
+`safety: 1–2` candidates skip this gate by design: unused imports / variables, compiler-proven unreachable branches, and orphan files are statically decidable, so a passing typecheck is sufficient proof for them. `safety: 3` (functions / methods / classes) and any `low_confidence` candidate are not statically decidable — liveness for dynamic code is undecidable in general — so they need evidence they are actually unexecuted before deletion.
 
 1. Instrument each candidate's definition site with a lightweight execution marker: a single log line (or counter increment) emitted on entry, tagged with the candidate's `file:name`.
 2. Run `TEST_CMD` plus any other exercising workload the repo provides (a `make`/script target that runs the app, a seed/CLI invocation). "Exercising workload" means something that drives production code paths, not just imports modules.
@@ -76,7 +76,7 @@ Sort `deletion_list` by `safety` ascending (1 → 3). This puts unreachable-code
 for c in sorted(deletion_list, by safety):
     delete(c)             # imports/vars via Edit, functions/methods/classes via ast-grep
     typecheck             # pyright / tsc
-    no NEW errors vs Phase 1 baseline → git commit -m "deadcode: try remove <file>:<name> [lens=<lens>]"
+    no new errors vs Phase 1 baseline → git commit -m "deadcode: try remove <file>:<name> [lens=<lens>]"
     new error(s) introduced → git reset --hard HEAD, record in rejected_by_typecheck
 ```
 
@@ -118,6 +118,6 @@ limitations: <free text>
 revert_cmd: "git reset --hard <safety_commit>"
 ```
 
-`status` reflects the run as a whole, and `deferred_needs_runtime_evidence` is independent of it: a deferred list may be non-empty under any status. Use `completed` whenever the pipeline finished and ≥1 deletion landed (even if some candidates were deferred). Use `no_runtime_evidence` only when nothing was deleted *because* every candidate that reached the deletion stage was a safety:3 / low_confidence one that had to be deferred. The deferred list is reported in every case so it is never silently dropped.
+`status` reflects the run as a whole, and `deferred_needs_runtime_evidence` is independent of it: a deferred list may be non-empty under any status. Use `completed` whenever the pipeline finished and ≥1 deletion landed (even if some candidates were deferred). Use `no_runtime_evidence` only when nothing was deleted because every candidate that reached the deletion stage was a safety:3 / low_confidence one that had to be deferred. The deferred list is reported in every case so it is never silently dropped.
 
 `limitations` must always state what this skill structurally cannot see, so a clean report is not misread as proof of no dead code: cross-language reachability (e.g. a Python symbol called only from TS/JS, or via an API/RPC boundary), dead CSS / unused static assets, code behind permanently-off (or permanently-on) feature flags, and any call made through reflection. None of these are detected here.

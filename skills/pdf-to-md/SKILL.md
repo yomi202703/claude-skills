@@ -17,7 +17,9 @@ OCR-drifted.
    ```bash
    python3 ~/.claude/skills/pdf-to-md/scripts/prepare.py <input...> --out-dir ~/preprocessed
    ```
-   `<input>` = a `.pdf`, a directory of images, a glob, or image paths. Prints a compact
+   `<input>` = a single `.pdf`, a directory of images, a glob, or image paths. One document
+   per run — to convert several PDFs, call prepare.py once per PDF (each gets its own `<stem>/`).
+   Requires poppler on PATH (`pdfinfo`/`pdftoppm`/`pdftotext`; `brew install poppler`). Prints a compact
    manifest; the full manifest (per-page image+text paths, `born_digital` flags, `outline_hint`,
    `batches` of ~6 pages) is at `<out_dir>/<stem>/_work/manifest.json`. Read that JSON.
 
@@ -55,8 +57,13 @@ OCR-drifted.
 
 - Born-digital (text layer present): char-multiset content coverage of the text layer must be
   ≥ 99.5% (NFKC, kana/kanji/latin only, position-insensitive — robust to reformatting and 2D
-  figure regrouping). Below that → exit non-zero with the low-coverage pages listed; re-transcribe
-  those batches, don't ship a lossy result.
+  figure regrouping). The text-layer ground truth has recurring header/footer/page-number chrome
+  removed first (the same boilerplate the transcription contract tells subagents to strip), so a
+  correctly-stripped footer is never counted as missing content — footer-heavy / slide docs no
+  longer false-FAIL. assemble reports the excluded chrome under `textlayer_chrome_excluded`.
+  Below threshold → exit non-zero; the `gaps` list names the low-coverage pages AND shows the
+  actual missing text (`missing_samples`), so you can tell a real omission from noise at a glance.
+  Re-transcribe the named batches; don't ship a lossy result.
 - Image-only (no text layer): no ground-truth anchor — coverage is N/A, assurance is softer.
   For high-stakes image-only docs, spot-re-read a sample of pages and compare.
 

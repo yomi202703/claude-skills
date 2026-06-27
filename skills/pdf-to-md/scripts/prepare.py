@@ -123,7 +123,15 @@ def _copy_images_as_pages(images: list[Path], img_dir: Path) -> list[Path]:
 
 def prepare(inputs: list[str], out_dir: Path, name: str | None,
             batch_size: int, dpi: int) -> dict:
-    single = len(inputs) == 1 and Path(os.path.expanduser(inputs[0])).suffix.lower() == ".pdf"
+    pdfs = [Path(os.path.expanduser(i)) for i in inputs
+            if Path(os.path.expanduser(i)).suffix.lower() == ".pdf"]
+    if len(pdfs) > 1:
+        sys.exit("[error] multiple PDFs in one call is not supported — this skill processes one "
+                 "document per run. Run prepare.py once per PDF (each becomes its own <stem>/ "
+                 "output). Got: " + ", ".join(p.name for p in pdfs))
+    if pdfs and len(inputs) > 1:
+        sys.exit("[error] cannot mix a PDF with other inputs — pass a single PDF, or only images")
+    single = len(pdfs) == 1
     pdf: Path | None = None
     images: list[Path] = []
     if single:

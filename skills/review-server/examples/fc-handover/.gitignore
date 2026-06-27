@@ -1,0 +1,4 @@
+dist/
+fc_gt.db
+__pycache__/
+*.pyc

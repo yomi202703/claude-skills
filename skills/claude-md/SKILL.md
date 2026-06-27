@@ -1,6 +1,6 @@
 ---
 name: claude-md
-description: Scaffold and maintain a repo's MEMORY — its CLAUDE.md, its working-doc governance (TODO / STATUS / decisions / archive), and its directory map. A method, not a generator: it guides authoring/reviewing, it does not blast out boilerplate. Covers the global-vs-repo split, what belongs where, and the hygiene that keeps it high-signal. Use when the user wants to create/review/improve a CLAUDE.md, set up a repo's working docs, or scaffold a project's memory; or says "/claude-md". Composed by judge-loop's Scaffold step.
+description: Scaffold and maintain a repo's memory — its CLAUDE.md, its working-doc governance (TODO / STATUS / decisions / archive), and its directory map. A method, not a generator: it guides authoring/reviewing, it does not blast out boilerplate. Covers the global-vs-repo split, what belongs where, and the hygiene that keeps it high-signal. Use when the user wants to create/review/improve a CLAUDE.md, set up a repo's working docs, or scaffold a project's memory; or says "/claude-md". Composed by judge-loop's Scaffold step.
 ---
 
 Set up and maintain a repo's memory layer. Three responsibilities, all method-not-boilerplate: (1) the CLAUDE.md, (2) the working-doc governance, (3) the directory map. The user owns every result — propose and let them edit, never overwrite without a diff. Output style: no `**` emphasis, `#`/`-` structure only.

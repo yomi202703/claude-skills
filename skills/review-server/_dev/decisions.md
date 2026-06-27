@@ -55,3 +55,25 @@ runfile lifecycle = "leftover means crash": removed via atexit on normal exit + 
 非衝突: tier pill(gold/silver/blind)は裏に数値の無い provenance メタゆえ html-deck が禁じる verdict チップではない。
 実装(ダサさ改善・実コード変更): server.py BASE_CSS に funnel と数値整列(tabular-nums・td.num 右揃え)を追加。eval_page の一致/不一致/陳腐化を プレーンテキスト段落 → html-deck funnel(生数値を大きく、例外=不一致/陳腐化だけ着色、agree は中立)に。UI ラベルは contract 由来のまま(S2 不変)、描画のみ変更。selftest の gold 件数 scrape を新 markup(funnel .big)に追従。selftest 全green(S3 firewall テスト含む)。
 据え置き: diag 乖離・/gt 表の生数値着色/右揃えフックの本格適用、/review の craft パスは未了(TODO 候補)。
+
+## 2026-06-27 分離FC引き渡しパッケージの参考例を examples/ に追加(Deferred は閉じない)
+
+発端(オーナー): grill で「judge-loop 起点で開発者面とFC面の両方を作る前提では」と提起。一次資料確認の結果、現状すでに前提でなく CHOICE 化済み(2026-06-24 judge-loop 横断.md: S1 開発者面限定・FC面は別成果物可)で、別スキル起こしは G7 premature として TODO Deferred 済みと判明。オーナー「じゃあ参考例としてサーバーを作ってみて」。
+
+何を足したか: examples/fc-handover/ に分離成果物型(別パッケージ)の動く参考例。template/ が同居型(防火壁=render時・/review が judges を呼ばない)なのに対し、こちらは 防火壁=不在 を実演 ── build_package.py が judges() を一度も呼ばず units の input+evidence だけを抜くので、パッケージに機械の答えも judges() 関数も存在しない(S3 最強形)。fc_server.py はブラインド面のみ(reveal 経路自体が無い)。
+跨ぐ不変を実コードで実演: S2=契約は単一ソースから生成(_generated スタンプ・手編集禁止)、S9=/export の CSV 列が dev /ingest と完全一致し同じ Store.append を通って戻る、S6=生むのは provenance=blind のみで gold 化は dev 側。
+検証: selftest.py が build→S2生成スタンプ→S3不在(data に機械出力なし・code に judges() なし)→commit→S9往復(吐いた行が dev store に取り込まれ blind→gold 昇格可)まで端から端まで通す。実起動 smoke でブラインド面の機械出力ヒット0・契約由来の軸ラジオ表示・export=inbox CSV も確認。PASS。
+
+なぜ template を増やさないか: これは維持対象の正準テンプレートでなく example。S1(乱立させない)に従い template/ は1つのまま、分離型は「こう分けてよい」の例示として別ディレクトリに隔離。dist/・fc_gt.db は gitignore(生成物)。
+
+閉じないもの: judge-loop TODO Deferred「FC面を別成果物/別スキルとして起こす[トリガ=外部FC実投入&campaign痛反復]」は据え置きのまま。本例は方法論実演であって本番起こしではない。判定の中身・既存 template コードは無改変。
+
+追記(同日・オーナー指摘): commit 後の「保存しました/次へ」中間ページを撤去し、確定→次の未確定ユニットへ 303 直行(保存通知は遷移先上端の細い帯のみ)に変更。根拠=この分離型は防火壁が不在で reveal 経路が無いため、中間ページは情報ゼロ＋1ユニットあたり1クリックの純粋な摩擦。設計点として一般化: 同居型 template/ は commit 後に機械判定を reveal(S4) するので中間ページは有意=撤去しない。「commit 後に出すものがあるか」が両形の分岐。最小面(S3/W2)は「情報を貧しく」だが「無駄に遅く」ではない＝advance-on-submit は IDE 肥大化でなく摩擦除去。redirect 後も機械出力ヒット0を smoke 確認・selftest PASS。
+
+追記4(同日・オーナー指摘): 軸設計の見直し＋例を template から切り離し。①2軸目 evidence_quality(根拠の質)を削除 ── これは元々ドメイン的必然でなく「多軸 config-driven を見せるためのデモ2本目」(template contract のコメント "Adapt or delete per domain")。オーナー「普通にいらない」。②判定軸を binary(要確認/問題なし)→3値 ○/△/× に。表現はケース依存(S2 ＝ 語彙は契約で持つ)。③理由枠を1行 input→textarea に。④確定済みを再訪すると 自分の前回判定(verdict/理由/根拠)を初期表示し改訂可(append-only)。
+切り離しの判断: これらは契約(単一ソース)変更。template/contract.example.json を直接いじると template/data.py の judges fixtures(要確認/問題なし/十分/薄い…全件)と template デモ全体へ波及し、維持対象を巻き込む。オーナーが触っているのは fc-handover の例なので、例に自前の単一ソース source/{contract.json,units.json} を持たせ template から decouple。build_package.py は source/ から生成するよう書き換え(S2 の筋＝単一ソース→生成コピー→dist 手編集禁止は保持)。S9 往復(selftest)は dev 側 store.py へ取り込む形のままで、語彙非依存ゆえ ○/△/× でも通る。
+検証: selftest PASS(axes=['judgment']・v2)。UI smoke=単軸 v_judgment の ○/△/× radio・reason は textarea・evidence_quality 消滅・再訪で前回○ checked＋理由プリフィル・一覧は「判定: ○ ・理由: …」。template 側は無改変。
+
+追記3(同日・オーナー指摘): 一覧(index)を、確定済みユニットについて レビュアー自身の判定(軸別)＋理由＋✓判定済/未判定 を表示する形に変更(従来は素のリンク＋✓のみで進捗・自分の判定内容が見えなかった)。S3 との切り分けを明記: S3 が禁じるのは commit 前に 機械の出力 を見せること。表示するのは レビュアー自身が確定した自分の判定＝機械出力でないので firewall 違反でない。未判定ユニットには何も出さない(機械の答えはそもそも存在しない)。確定済みもリンクは残し再判定可(append-only=改訂は新行・store.latest_by_unit が最終行採用)。検証: 2件確定後 index に軸別判定＋理由＋2/6完了が出る・機械出力ヒット0・selftest PASS。設計点として一般化: ブラインド面で「自分の過去判定の表示」は firewall に抵触しない(機械出力でない)。進捗・自己一貫性の確認に必要なので出してよい。
+
+追記2(同日・オーナー指摘): レビュアー面の「GTをエクスポート（CSV）」リンクを撤去。根拠=判定は commit 時点で内部(fc_gt.db)に自動保存されており、レビュアーの関心事は「判定する→保存される」だけ。export はレビュアーが押すボタンでなく、返却パッケージから GT を回収して開発側へ戻す オペレータ操作。設計点として一般化: レビュアー面に出すのは「レビュアーがやること」だけ。永続化は副作用として自動、回収/戻し(S9)はオペレータの面に分離する。実装=GET /export ルートと export リンクを削除し、export を `fc_server.py --export [PATH]` の CLI(オペレータ)へ移動(列は dev /ingest と完全一致のまま)。selftest は新 module 関数 export_inbox_csv() を直接呼ぶ形に更新(旧 dummy-handler ハック撤去)。検証: index に export 文言0・GET /export=404・CLI export が同一 fc_gt.db を読んで inbox CSV 出力・selftest PASS(S9往復含む)。

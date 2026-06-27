@@ -26,3 +26,8 @@
 
 # Hypothesis test cache (regenerated; not source).
 **/.hypothesis/
+
+# Regenerable derivations: virtualenvs, tool caches (never source, never commit).
+**/.venv/
+**/.pytest_cache/
+**/.cache/

@@ -1,4 +1,5 @@
 ---
+name: gemma-prompt
 description: Design or convert a classification/judgment prompt for Gemma 4 31B or similar open mid-size local models. Encodes Gemma 4's measured properties into concrete prompt rules. Use whenever the user writes, reviews, shortens, or ports a prompt for a local/open model — "Gemma用のプロンプト".
 ---
 

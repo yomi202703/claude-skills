@@ -1,0 +1,52 @@
+---
+name: repo-shape
+description: 散らかった既存リポを安全に AI-native 構造へ寄せ直す(主)＋新規リポに base を最初に敷く(従)スキル。単位非依存層の正準スキーマを単一所有し、ツリーを実際に動かす安全移行手順(branch→git mv→ripple-check→テスト→オーナー diff・可逆)を持つ。正準名は紙で凍結せず初回の実リポ走行で結晶化する。claude-md(メモリ層の中身)と ripple-check(参照追従)へ compose、judge-loop §3.5 の base を単一所有。Triggers — "repo-shape".
+---
+
+# repo-shape
+
+Fix an existing repo's mess by safely moving what is there one reversible step at a time, not by redesigning the tree on paper. Also lay the universal base into a new repo. Remedial — reshaping a real mess — is the primary case; do not let this drift into a greenfield scaffolder.
+
+## Scope gate (check before anything else)
+- git repo + clean working tree required — the safety model is git-mv + branch + revert. Not a git repo: offer `git init` and stop. Dirty tree: have the owner commit or stash first; never reshape on top of uncommitted work.
+- Decide and execute the move; do not author the content of the files moved. CLAUDE.md text, the four-role governance docs, and the secret discipline (.gitignore / .env.example) belong to claude-md — compose it, never duplicate it.
+- The owner is the審級. Present every proposed tree and every migration as a diff to ratify before it lands. Never self-approve a move.
+
+## Two entrances
+- Remedial (primary): a repo with accumulated mess. Classify what is there → propose a target tree → owner ratifies → migrate one category at a time → ripple-check → test → next category.
+- Preventive: an empty or day-0 repo. Lay the universal layer directly, no migration. Reserve unit-dependent slots empty.
+
+## The universal layer (what repo-shape single-owns)
+Fix only the unit-independent layer — names that do not depend on what the repo eventually judges or produces, so fixing them early causes no rework (G7 applied to directories). Reserve unit-dependent names as empty slots and defer their shape until the unit settles.
+
+Treat these canonical names as the default the first real run confirms or adjusts, not as frozen law (n=1 origin — akatsuki):
+- `CLAUDE.md` — repo memory. Content owned by claude-md.
+- `.gitignore` / `.env.example` / `.env` — secret discipline owned by claude-md; ensure the slots exist and are placed.
+- the gen/source firewall — the discipline repo-shape adds that claude-md is thin on. A trichotomy by "can I rewrite or regenerate this":
+  - immutable inputs — given from outside, never written by code (`_data/raw/`). Touch nothing here.
+  - regenerable derivations — produced by code, reproducible, disposable, gitignored (`_data/processed/`, build artifacts, re-runnable machine outputs). Safe to delete; never in git.
+  - append-only evidence — produced once by a run or a human and not reproducible: run logs, recorded model outputs compared across versions, human reviews / GT. Never overwrite, never gitignore away. A naive source/generated split silently destroys this class.
+  Hand-authored mutable artifacts (prompts, rubric, contract) are source — they live in the source layer, versioned, not in the firewall.
+- source layer — the repo's actual logic (`src/`, `scripts/`, or module dirs); name varies. Generated artifacts never co-mingle with it.
+- `tests/`
+- governance dir (`成果物/` or `docs/`) holding `STATUS.md` / `TODO.md` / `decisions/` / `archive/`; structure owned by claude-md.
+
+Reserve but defer (unit-dependent): `outputs/<unit>/` and any serving/delivery/carve-out dirs — reserve the name, leave the internal shape until the unit settles.
+
+Do not place these (judgment-specific — judge-loop owns them): `contract/` `factlayer/` `gt/` `spike/` `review_server/` `eval/` `access/`. Fix the base; judge-loop adds its judgment delta on top.
+
+## Safe-move procedure
+Per category, in order, never skipping:
+1. Confirm clean tree, on a dedicated branch (not the default). One category per step.
+2. `git mv` the files — preserves history, reversible. Never delete-and-recreate.
+3. ripple-check the moved paths: imports, config, scripts, test fixtures, docs, names, persisted paths must all follow. Hand the moved set to ripple-check; do not reimplement it.
+4. Run the repo's own tests / type-check. Green before the next category.
+5. Present the diff; land only on ratify. Any step red → revert the branch.
+
+## Crystallize names by running, not on paper
+The discipline (firewall, early-fix / defer-settle, safe-move steps) is repo-independent and solid; the specific canonical names are n=1 and provisional. Run the minimal cycle on a real repo (classify → propose → ratify → migrate one category → ripple-check → test pass) and let the names settle against a real tree before treating any as canonical. Do not present the name set as fixed before that run.
+
+## Composition
+- claude-md — owns memory-layer content (CLAUDE.md, four-role governance, directory map) and secret discipline. repo-shape owns the tree-shape schema and calls claude-md for that content. Do not duplicate either single source.
+- ripple-check — owns reference-following after each move; never reimplement it.
+- judge-loop — composes repo-shape as its Scaffold base (§3.5) and adds only the judgment-specific delta. repo-shape stands alone for any repo, judgment or not.

@@ -1,0 +1,24 @@
+{
+  "_comment": "この例の単一契約ソース(S2)。語彙・軸はここだけで変える。build_package.py がここから dist/ の契約コピーを生成し、サーバはハードコードせずこれを読む。本物のホストでは、これは開発側システムが持つ単一契約ソースに当たる。",
+  "version": {
+    "contract": "v2",
+    "unit": "v1",
+    "criterion": "v1",
+    "judge": "v1"
+  },
+  "unit": {
+    "id_fields": ["item_id"],
+    "label": "item"
+  },
+  "evidence_pointer": "idx",
+  "axes": [
+    {
+      "key": "judgment",
+      "label": "判定",
+      "cardinality": "ternary",
+      "vocabulary": ["○", "△", "×"],
+      "isolation": "screening",
+      "_comment": "3値スクリーニング(○/△/×)。記号の意味と表現はケースで変える ── この例の読みは ○=問題なし / △=要確認 / ×=問題あり。語彙を変えると radio も export も自動で追従する(S2)。"
+    }
+  ]
+}
