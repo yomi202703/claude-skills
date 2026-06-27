@@ -44,13 +44,9 @@ WebSearchして「{トピックの素朴な言い換え}」。URL / title だけ
 - 言語ゲート:
   - 論文・研究ベース（OpenAlex 判定と同じ）: 英語一択。JP は撃たない（一般記事ノイズになるだけ）。
   - 日本固有（国内制度・事情・邦文一次資料）: JP をフル軸で必須。
-  - 中国一次（一次ソースが中文圏: 中国 AI lab/モデル〔DeepSeek, Qwen/通义, GLM/智谱, Kimi/月之暗面, MiniMax, 豆包, Hunyuan〕・中国ハード/チップ〔昇腾, 寒武纪, 摩尔线程〕・中国企業/アプリ/市場・中国の制度規制〔工信部, CAC〕）: ZH をフル軸で必須（鮮度 + canonical 両方）。英語二次は時差・翻訳ロス・西側バイアス込みなので一次の代替にしない。
-    - 但し書き: 中国 lab は論文を arXiv に英語で出すので純・論文層は既存の英語/OpenAlex 経路でほぼ足りる。ZH 増強が効くのは非論文層（モデルカード・官方ブログ・WeChat 告知・知乎の深掘り・コミュニティ再現/批判）。ここを狙う。
+  - 中国一次（中文圏が一次か＝判定の固有名リスト・狙う非論文層は cn-search）: ZH をフル軸で必須（鮮度 + canonical 両方）。英語二次は時差・翻訳ロス・西側バイアス込みなので一次の代替にしない。
   - どちらでもない（海外発だが国内議論もある等）: 英語フル + JP 確認 1 本 + ZH 確認 1 本（海外発でも中文圏で別評価・再現・批判が立つため）。
-- ZH クエリの作法（ZH を撃つとき）:
-  - Step 0 の語彙ブートストラップを中文でも 1 本（術語が英語と別: 「大模型」「推理」「微调」「评测」等）。
-  - 鮮度軸 = literal「2026年5月」/「2026-MM」、canonical 軸 = 日付なし「{topic} 原理 / 评测 / 复现」。
-  - この環境の WebSearch は US 寄りで CN に届きにくい。WebSearch は `allowed_domains` を cn ドメイン（zhihu.com / 36kr.com / juejin.cn / jiqizhixin.com / mp.weixin.qq.com）に寄せる。届かなければ官方ブログ/GitHub を直接 WebFetch で取りに行く。
+- ZH を撃つときのクエリ作法（中文語彙ブートストラップ・鮮度/canonical 軸）と到達（allowed_domains の cn 寄せ・直 WebFetch）は cn-search。
 
 subagent 戻り値を本体 context に集約。
 
@@ -86,7 +82,7 @@ WebSearch を以下のクエリで実施（言語は Phase 1a の言語ゲート
 - "{topic} failed cases 2026-MM"
 - "{topic} alternative beats 2026-MM"
 - （日本固有 / grey のみ）「{topic} 批判 2026年MM月」「{topic} 限界 2026年MM月」
-- （中国一次 / grey のみ・ZH。allowed_domains を cn に寄せる）「{topic} 批评 2026年MM月」「{topic} 局限」「{topic} 翻车 / 造假 / 夸大」「{topic} 复现失败 / 实测」
+- （中国一次 / grey のみ）ZH の否定軸クエリ（批评 / 局限 / 翻车 / 造假 / 夸大 / 复现失败 / 实测）と cn 寄せは cn-search の作法で。
 
 URL / title / 1行 snippet の表だけ返す。賛成・反対・不明を区別。最低 8 件。
 肯定情報と否定情報の両方を集めてよい。事実検証が目的。
@@ -145,13 +141,7 @@ for each claim in atomic_claims:
 3. 公式リリースノート
 4. 著名な独立メディア
 
-ZH の pick-best（中国一次 / grey で ZH を扱うとき。上の西側リストと並列に使う）:
-1. arxiv / GitHub / HuggingFace モデルカード / 官方技术博客（EN・ZH 問わず）
-2. 官方 WeChat 公众号告知（mp.weixin.qq.com）/ 官方文档
-3. 著名技术媒体: 机器之心 / 量子位(QbitAI) / InfoQ 中国
-4. 当事者・コミュニティ: 知乎の高票回答 / 掘金 — CSDN は質が低く最後の手段
-
-ガード（ランキング媒体）: 微博热搜 / 知乎热榜 / 百度热搜 / 今日头条 は pre-ranked の単眼ランキングで per-item の信頼できるタイムスタンプが無く、順位は媒体の編集圧であって一次ではない。source に数えない（固有名・検索語の発見補助としてのみ可）。
+ZH の pick-best 序列（官方 > 著名技术媒体 > コミュニティ）と pick-best 全体は cn-search。西側リストと並列に使う。ランキング媒体（微博热搜 / 知乎热榜 / 百度热搜 / 今日头条）は per-item の信頼できるタイムスタンプが無く一次ではない＝source に数えない（cn-search のガード。独立 source カウントに効くのでここで再掲）。
 
 学術なら独立性補強（OpenAlex 被引用）: high/medium の論文 claim は OpenAlex で当該 work を引き、citing works を独立 source 候補にする。
 ```
