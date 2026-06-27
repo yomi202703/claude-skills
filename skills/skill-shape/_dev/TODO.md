@@ -5,8 +5,7 @@ _一行一項目。理由は decisions(日付で参照)に置く。完了は dec
 
 ## Active
 
-- [P0] 既存スキル1本(README化/冗長の疑いがあるもの。候補: skill-gripe 本文6行・antigravity)に skill-shape を当て、出荷ゲートが実際に切れるか1サイクル検証 → 結果を decisions へ
-- [P1] 出荷ゲートを reference/checklist.md に切り出すか判断(本文インラインのままで足りるか)
+- なし(初期の検証フェーズは全 skill 実走で完了。decisions 2026-06-27 参照)
 
 ## Deferred
 

@@ -94,3 +94,9 @@
 - 軽微: deadcode(bold2+italic3+CAPS)・xlsx-router(CAPS3)・zeitgeist(bold1)・work-report(reflow)・gemma-prompt(frontmatter に name 欠落→追加)。
 - クリーンで無処置(=直す対象でないことの確認): windows-share/progress/prism/html-deck/ripple-check/repo-shape/onsen/grill-me/recall。repo-shape は既に締まった文体・html-deck は自分の作法を体現。
 - 結論: 約30 skill を一周。装飾(bold/CAPS/italic/桁折り)・履歴・README-voice・WHY肥大を除去、operational と定義語は保持。skill-shape は「見つけたら削る」でなく audience(=モデル) と『執行者の動きを変えるか』で残す/削るを割る道具として機能した。
+
+## 2026-06-27 sweep クローズ + governance 現状化
+
+- 旧 TODO P0(実スキル1本で出荷ゲート検証)は全 skill 実走で完遂 → decisions 済ゆえ TODO から除去。
+- 旧 TODO P1(出荷ゲートを reference/checklist.md へ切り出すか)を解決=切り出さない。sweep 全域で本文インラインのチェックリストが機能し、別ファイル化の必要が出なかった(skill-shape 自身を薄く保つ判断とも整合)。won't-do として decisions のみに記録し TODO から除去。
+- STATUS を sweep 完了・main push(48c9487)・onsen gitignore まで現状化。Active は空(検証フェーズ終了、運用フェーズへ)。Deferred の description-eval は据置(誤 route 観測がトリガ)。
