@@ -40,3 +40,18 @@ Owner asked how to manage ports when several servers run (even within one projec
 - "what's running where" = discovery, not storage: `--status` cross-references live LISTEN sockets (lsof) by cwd — the same identity signal used for the :8030 incident. Zero stored cross-project ledger.
 base_port lives as the `--port` default (grill answer), NOT in contract.json — port is deployment config, contract is judgment vocabulary (keeps S2 clean).
 runfile lifecycle = "leftover means crash": removed via atexit on normal exit + Ctrl-C; added SIGTERM→sys.exit(0) handler so `kill` also cleans up (atexit doesn't fire on SIGTERM). doctor.py warns on a leftover runfile (advisory, not a structural NO-GO). Verified: two servers collide 8500→8501 with distinct runfiles; runfile present while running, removed on SIGTERM; doctor GO, selftest PASS.
+
+## 2026-06-27 — W7 rubric-frontier lens を文書追加(新ゲートにはしない・実装は据え置き)
+発端: judge-loop 側で「要件 plan=凍結tree / その後のずれ=生成 frontier ビュー」を確定(judge-loop decisions/横断.md 2026-06-27、外部2AI chatgpt-web/gemini-web 非相関相談で「条件付き採用」一致)。レンダ先を review-server と名指したので、こちらの文書にも追加。
+何を足したか: W7 = rubric-frontier レンズ(owner-audit ビュー)。基準の変遷を単一ソース(decisions + P4 atomic criteria ledger)から生成し、現行 active 基準=frontier と supersede 済み履歴を分け、各改訂に breaker ケース1件を添える。合流/分岐/失効を許す(因果でなく改訂履歴)。所有者の言葉のみ(内部 id/schema は別層)。Composition の judge-loop 行にも一句。
+なぜ新ゲート(S13)にしないか: ゲートは あかつき失敗事例からの帰納で席を得る不変条件(docs/事例)。これは judge-loop からの演繹で失敗証拠がまだ無い。ゆえに S1(新角度はモード/レンズ・新プログラム化しない)に従う「生成レンズ」として、既存ゲートの下に置く — S2(単一ソースから生成・手編集禁止)・S8(読み取り副作用なし)・S3(進化中 rubric を blind /review に出すとレビュアーを anchor するので developer/owner 面限定)。
+据え置き: template への実装はしない(ホストが基準変遷を監査したくなった時に W7 を建てる)。本エントリは文書追加の記録。判定の中身・既存 template コードは無改変。
+
+## 2026-06-27 html-deck を判定/スコア面の描画規律として合成(layered, S3 gate)
+
+何を足したか: Composition に html-deck を追加。判定/スコア面(diag 乖離キュー・evaluation・W7)の描画規律として呼ぶ。
+層分け(S3 ゲート): diag/evaluation は html-deck 全適用(乖離キュー=判定表、evaluation=スコア表)。W7 は「相手の言葉/内部表現排除」＋craft。ブラインド /review は craft/可読性/相手の言葉 層のみ ── 判定描画層(verdict着色・機械結果のfunnel)を commit 前に当てると S3 を破るので firewall。reveal 後の乖離表示は全適用。
+相互強化: html-deck「内部表現を出すな」は S2(サーバは語彙を contract から読む・ハードコードしない)が構造的に実装。S2 が原則5を仕組みに変える。
+非衝突: tier pill(gold/silver/blind)は裏に数値の無い provenance メタゆえ html-deck が禁じる verdict チップではない。
+実装(ダサさ改善・実コード変更): server.py BASE_CSS に funnel と数値整列(tabular-nums・td.num 右揃え)を追加。eval_page の一致/不一致/陳腐化を プレーンテキスト段落 → html-deck funnel(生数値を大きく、例外=不一致/陳腐化だけ着色、agree は中立)に。UI ラベルは contract 由来のまま(S2 不変)、描画のみ変更。selftest の gold 件数 scrape を新 markup(funnel .big)に追従。selftest 全green(S3 firewall テスト含む)。
+据え置き: diag 乖離・/gt 表の生数値着色/右揃えフックの本格適用、/review の craft パスは未了(TODO 候補)。

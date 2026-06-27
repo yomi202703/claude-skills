@@ -188,6 +188,16 @@ th{color:var(--muted);font-weight:600;font-size:12px}
 form.inline{display:inline;margin:0}
 form.inline button{padding:.3em .8em;font-size:13px;background:#92600a}
 form.inline button:hover{background:#7a4f08}
+table{font-variant-numeric:tabular-nums}
+td.num,th.num{text-align:right}
+.funnel{display:flex;gap:.7em;align-items:stretch;margin:.2em 0 1em}
+.fbox{flex:1;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:.75em;text-align:center;box-shadow:0 1px 2px rgba(20,30,50,.04)}
+.fbox .big{font-size:30px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.fbox .lab{font-size:12px;color:var(--muted);margin-top:.35em;line-height:1.35}
+.fbox.ok{border-top:3px solid #2e7d57} .fbox.ok .big{color:#2e7d57}
+.fbox.flag{border-top:3px solid var(--flag)} .fbox.flag .big{color:var(--flag)}
+.fbox.warn{border-top:3px solid #c77700} .fbox.warn .big{color:#c77700}
+.farrow{display:flex;align-items:center;color:var(--muted);font-size:18px}
 """
 
 
@@ -607,11 +617,17 @@ class H(BaseHTTPRequestHandler):
             f"<li>{html.escape(r['at'])} · {html.escape(r['caller'])} · {html.escape(r['reason'])} · {r['n_rows']} {UI['rows']}</li>"
             for r in log
         ) or f"<li>{UI['eval_no_holdout']}</li>"
+        miss_cls = "fbox flag" if miss else "fbox"
+        stale_cls = "fbox warn" if stale else "fbox"
         return page(
             f"<h3>{UI['eval_title']}</h3>"
-            f'<div class=card><p style="margin:.1em 0">{UI["eval_gold"]} <b>{len(gold)}</b> · '
-            f'{UI["eval_agree"]} <b>{agree}</b> / {UI["eval_miss"]} <b>{miss}</b></p>'
-            f'<p style="margin:.1em 0">{UI["eval_stale"]}: <b>{len(stale)}</b></p></div>'
+            f'<div class="funnel">'
+            f'<div class="fbox"><div class="big">{len(gold)}</div><div class="lab">{UI["eval_gold"]}</div></div>'
+            f'<div class="farrow">→</div>'
+            f'<div class="fbox ok"><div class="big">{agree}</div><div class="lab">{UI["eval_agree"]}</div></div>'
+            f'<div class="{miss_cls}"><div class="big">{miss}</div><div class="lab">{UI["eval_miss"]}</div></div>'
+            f'<div class="{stale_cls}"><div class="big">{len(stale)}</div><div class="lab">{UI["eval_stale"]}</div></div>'
+            f'</div>'
             f'<h4>{UI["eval_holdout"]}</h4><div class=card><ul class=qlist>{loglines}</ul></div>'
             f'<p><a href="/gt">{UI["nav_gt_manage"]} →</a></p>',
             who=UI["who_dev"],

@@ -33,11 +33,18 @@ Three modes across the lifecycle: diagnostic (developer), GT-creation (human), e
 - W4 Divergence queue (S4): developer-mode proposer-vs-judge disagreements feed the GT-creation priority queue.
 - W5 Snapshot + distribution (S10): snapshot for shared review, live for latest, provenance on screen, one verified package command; verify the handoff end-to-end before declaring done.
 - W6 Evaluation mode (S6 + S12), once gold/holdout accumulate — a third mode, not a new server: regression vs frozen gold (split noise from real difference); holdout milestone check (logged); staleness queue (criterion_version lag → re-ratify); promotion divergence-queue → human GT → silver → blind re-confirm → gold. Grill: metric; cadence; staleness threshold.
+- W7 Rubric-frontier lens (an owner-audit view, generated — not a new program: S1; not a new gate). Render the criteria evolution from ONE source: decisions + the P4 atomic criteria ledger (S2 — generated, never hand-edited). Shows current ACTIVE criteria (frontier) vs superseded history; each revision tagged with its one breaker case; merges/splits/supersessions allowed (a revision history, NOT a causal graph). Owner-language only (internal id/schema kept off-screen, mapping in a separate layer). Read-only (S8). Developer/owner surface only — never the blind `/review` surface (showing the evolving rubric there would anchor the reviewer, S3). Surfaces the criterion_version lineage and staleness that W6 re-ratifies against. Deferred until the host actually needs to audit criteria evolution; this is documentation of the lens, not a template build.
 
 ## Composition
 - Every fork → grill-me.
 - Source preprocessing for what the server displays → xlsx-router, pdf-to-md.
-- Invoked by judge-loop: P0u / W6 are developer modes of the one server; P2 GT-creation is a mode of it or a separate handover deliverable (S1/S2/S9 hold either way).
+- Invoked by judge-loop: P0u / W6 are developer modes of the one server; P2 GT-creation is a mode of it or a separate handover deliverable (S1/S2/S9 hold either way); the P4 rubric-frontier lens (W7) is a generated owner-audit view, a lens not a new program (S1/S2/S8).
+- Rendering discipline for the judgment/score surfaces → html-deck (raw numbers + threshold coloring not verdict-label columns, funnel spine, priority ordering, dual-encoding, owner-language). Applies LAYERED, gated by S3:
+  - /diag (divergence queue, per-unit judge panel) and evaluation mode (regression/agreement/staleness) → full html-deck; the divergence queue is a judgment table, evaluation is a score table.
+  - W7 rubric-frontier → html-deck principle "相手の言葉で書く"/internal-representation removal + craft.
+  - Blind /review (S3) → ONLY html-deck's craft/legibility/owner-language layer. Its judgment-rendering layer (coloring verdicts, a funnel of machine results) is firewalled OUT pre-commit — applying it would breach S3. After reveal, the divergence view takes full html-deck.
+  - Synergy: html-deck's "no internal representation" is OPERATIONALIZED by S2 (server reads vocabulary from the contract, never hard-codes) — S2 makes that principle structural, not aspirational.
+  - Non-conflict: tier pills (gold/silver/blind) are provenance metadata with no underlying number, so they are NOT the verdict-chip html-deck forbids (it forbids chips that hide a raw judgment number).
 
 ## Ledger
 Append-only from day 1 (judge-loop G6): decisions and why, rejected options and why, which GT campaigns used which protocol.

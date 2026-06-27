@@ -72,3 +72,11 @@
 - 実施(D 過適合の注記): funnel/大数字先出しは意思決定層向け、監査・原因探索層では邪魔。サンプルは一例であって規範でない。
 - 退けた: Tufte 明記(ChatGPT 蛇足・Claude Desktop 二重、2/3否定＋dedup と整合)→ 具体規約のみ残し名指しは削除。
 - C eval(P2)を3者統合で確定し TODO へ: (1)非著者の意思決定一致(正答率・到達秒数・残質問数) (2)CSS全剥がしのブラインド・テスト(視覚なしエージェントで Go/No-Go) (3)過削りガード(消えた構造情報=0 を別エージェント照合)。見栄えは測らない。
+
+## 2026-06-27 review-server への合成(描画規律として呼ばれる)
+
+- ユーザー要望: review-server の出力が「ダサい」ので html-deck を設計思想に組み込んで改善。
+- 合成として確定(両 SKILL.md に明記): html-deck は review-server の判定/スコア面の描画規律。層分け ── diag 乖離キュー(判定表)・evaluation(スコア表)は全適用、W7 は原則5＋craft、ブラインド /review は craft/相手の言葉 層のみ(S3 アンカリング・ファイアウォールが判定描画層を commit 前に禁じる。当てると S3 違反)。
+- 相互強化を記録: 原則5(内部表現を出すな)は review-server S2(語彙を contract から読む)が構造的に担保 ── html-deck の弱点(善意では守れない)を S2 が機械化。
+- 非衝突: review-server の tier pill は provenance メタで、html-deck が禁じる「生数値を隠す verdict チップ」ではない(R2 の条件化と一致)。
+- 実装は review-server 側 template に(eval を funnel 化・数値整列、selftest 追従、全green)。詳細は review-server/_dev/decisions.md 同日エントリ。

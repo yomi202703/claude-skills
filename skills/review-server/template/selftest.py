@@ -81,8 +81,9 @@ def main() -> int:
         pid = gt.split("/promote/", 1)[1].split('"', 1)[0]
         post(f"/promote/{pid}", {})
         after = get("/eval")
-        gold_before = before.split(server.UI["eval_gold"], 1)[1].split("<b>", 1)[1].split("</b>", 1)[0]
-        gold_after = after.split(server.UI["eval_gold"], 1)[1].split("<b>", 1)[1].split("</b>", 1)[0]
+        # gold count renders as the funnel .big value just before its eval_gold label
+        gold_before = before.split(server.UI["eval_gold"], 1)[0].rsplit('class="big">', 1)[1].split("</div>", 1)[0]
+        gold_after = after.split(server.UI["eval_gold"], 1)[0].rsplit('class="big">', 1)[1].split("</div>", 1)[0]
         expect("loop closes: eval gold count rises after promote",
                int(gold_after) > int(gold_before), f"{gold_before} -> {gold_after}")
     finally:
