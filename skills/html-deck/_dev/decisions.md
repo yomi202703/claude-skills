@@ -57,3 +57,18 @@
   https://stephaniewalter.design/blog/essential-resources-design-complex-data-tables/
   https://www.geeksforgeeks.org/data-visualization/mastering-tuftes-data-visualization-principles/
   https://insightsoftware.com/blog/effective-color-schemes-for-analytics-dashboards/
+
+## 2026-06-27 (R2) 2巡目の3者レビュー ── 足すより削る/矛盾を条件化
+
+- ChatGPT・Claude Desktop・Antigravity に更新後の現状を再度ブリーフ(brief2)。3者揃って回答(Antigravity は file-handoff、Claude Desktop は2回失敗後アプリ前面化で取得)。
+- 最大の収束(採用): このスキル自体が原則1(削る)を破っている。二重符号化・内部表現が三重、Tufte が二重、「アンチパターン早見」は原則＋チェックリスト＋antipattern.html の三つ目のコピー(Claude Desktop)。ChatGPT「作法→美学付き標準に膨張」。→ 削る方向で自己適用。
+- 実施(A 削る): アンチパターン早見を撤去。視覚の作法から Tufte 名指しと二重符号化の再説明を除去(原則2へ集約)。
+- 実施(B 矛盾を条件化・足さない):
+  - アイコン/チップ全棄却 vs 二重符号化(Antigravity): 棄却は「数値を置き換える」場合のみ。数値に併せる記号/アイコンは色非依存の二重符号化として可。
+  - 判定保留 最下段 vs 結論先出し(Antigravity): 件数は funnel(上)に出す/行だけ監査表の最下段/ブロッカーなら最上段。未確定は隠さない。
+  - 閾値「高め1本」 vs 「単位ごと可変」(Claude Desktop): 直交と明記 ── 単位ごとに高い1本、precision は各単位で保つ。
+  - 「自明まで削る」 vs 「削りすぎは信頼を削る」(Claude Desktop): 判定条件を付与 ── 著者既知/導出可/繰り返しは削る、読み手が照合・行動に要る物は残す、検証不能になったら削りすぎ。
+  - non-finding 中立化が強すぎ/基準曖昧(ChatGPT・Antigravity): 探索範囲・検索努力を併記し「原典に無い」と「探さなかった」を区別。
+- 実施(D 過適合の注記): funnel/大数字先出しは意思決定層向け、監査・原因探索層では邪魔。サンプルは一例であって規範でない。
+- 退けた: Tufte 明記(ChatGPT 蛇足・Claude Desktop 二重、2/3否定＋dedup と整合)→ 具体規約のみ残し名指しは削除。
+- C eval(P2)を3者統合で確定し TODO へ: (1)非著者の意思決定一致(正答率・到達秒数・残質問数) (2)CSS全剥がしのブラインド・テスト(視覚なしエージェントで Go/No-Go) (3)過削りガード(消えた構造情報=0 を別エージェント照合)。見栄えは測らない。
