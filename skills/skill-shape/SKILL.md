@@ -12,6 +12,12 @@ A SKILL.md is a forward instruction to the model instance that will execute it �
 - Does not decide whether the skill should exist. Invoke grill-me alongside for that.
 - Present the result as a diff; the author ratifies. Do not silently overwrite.
 
+## Skill or ambient — decide before you shape
+The audiences below place a line inside a skill. First catch the lines that do not belong in a skill at all. A skill is on-demand: its description reaches the router only on budget, its body only on a matching intent. A line needed every session does not fit — it waits for a trigger an always-true need never fires, and it spends the always-visible trigger surface, a scarce resource, on knowledge that will not auto-fire. Route such a line out before you write the skill:
+- Needed every session as live state (current TODO/STATUS, open items) → a SessionStart hook.
+- Needed every session as a standing rule (a convention, an output constant) → repo or global CLAUDE.md.
+Hand both ambient cases to claude-md; it owns their placement, freshness, and removal. Keep a line in a skill only when the executor recognizes a specific intent that should load the body. Every-session is necessary, not sufficient: a line that matters only inside one task stays a skill even if it recurs.
+
 ## Write the body for the executor (the core)
 The body is read only by the future instance running the skill. Write to it: imperative, forward, only what it acts on. Cut everything else:
 - No README-voice. Not a sentence describing the skill from outside — tell the runner what to do.
@@ -20,12 +26,13 @@ The body is read only by the future instance running the skill. Write to it: imp
 - No history. No "previously…", "changed from…", no past versions or superseded behavior. That is maintenance material, never the body.
 - No defensive hedging. Do not enumerate irrelevant conflicts, collisions, or edge cases that will not occur. State the real path; let a rare case be handled when it actually appears.
 - No WHY past a clause. Reasons live in maintenance material; one clause inline at most.
+- No imported output-design rules. Patterns for shaping CLI output or another tool's UX target a different medium than a skill's natural-language body; a given rule earns a line only if it changes what the executor does. The framework-by-framework mapping is maintenance, not body.
 Test each line: does the executor do something different because of it? If not, cut it.
 
 ## Three audiences (decides where a line goes)
 - description → the router deciding whether to load the skill, from this string alone. Discriminative: what it is, what it is not, concrete triggers. The highest-leverage text in the skill; write it last.
 - body → the executor: thin, imperative, forward (above).
-- supporting files (scripts/ reference/ templates/) → loaded on demand: code, lookup knowledge, emitted skeletons. Referenced from the body, never inlined.
+- supporting files (scripts/ reference/ templates/) → loaded on demand: code, lookup knowledge, emitted skeletons. Referenced from the body, never inlined. When you reference one, name what it holds and when to open it, so the executor can decide without loading it.
 - maintenance material → never loaded at runtime: design notes, decisions, tests, history. Where WHY and the past go to live.
 
 ## Directory
@@ -39,6 +46,7 @@ SKILL.md is the only guaranteed-loaded file. Everything else is optional, added 
 - Description is discriminative — names what the skill is not, plus triggers; a stranger instance could route from it alone.
 - Only necessary directories; generated data kept out of version control.
 - Frontmatter is exactly name + description; name = the kebab-case directory name.
+- No misplaced lines: nothing that must affect every session is buried in this skill — live state went to a hook, standing rules to CLAUDE.md.
 
 ## Boundaries
 - Owns a skill's shape, voice, and structure — not the domain content of the skill being built (its scripts/templates), and not whether that skill's logic is correct.
