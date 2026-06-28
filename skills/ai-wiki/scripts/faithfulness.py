@@ -12,8 +12,17 @@ judge defaults to a *different* model than the generator, receives claims as
 neutral text stripped of the DSL (de-facto authorship obfuscation), and is
 forced to quote a verbatim source span for any "supported" verdict.
 
-Output is diagnostic (a hidden report + a faithfulness %), never an auto-edit:
-the tree is a working hypothesis the user verifies against the source.
+A second pass (judge_soundness) judges the *structure*: faithfulness flags the
+synthesized spine edges as source_silent (provenance — "not stated"), but says
+nothing about whether the A→B move is *valid*. The soundness pass closes that —
+sound | dubious | unsound — over exactly those edges. It is the only check on
+the spine topology (coverage = recall, faithfulness = claim precision), the most
+pedagogically load-bearing and most plausibly-wrong layer, which the user never
+cross-checks.
+
+Output is diagnostic (a hidden report + percentages), never an auto-edit: the
+tree is a working hypothesis, and verification is the machine's job not the
+user's (SKILL hard rule #5).
 """
 from __future__ import annotations
 
@@ -67,6 +76,17 @@ class FaithfulnessReport:
     fact_total: int = 0
     fact_supported: int = 0
     fact_faithfulness_pct: float = 0.0   # supported facts / fact_total
+    # Structural soundness: a *second* judgment over the source_silent edges
+    # (the synthesized spine). faithfulness asks "is it stated" (no, by design);
+    # soundness asks "is the A→B move valid given the source". This is the only
+    # check on the spine topology — the most pedagogically load-bearing, most
+    # plausibly-wrong layer, which neither coverage (recall) nor faithfulness
+    # (claim precision) validates, and which the user never cross-checks.
+    soundness_total: int = 0
+    soundness_sound: int = 0
+    soundness_dubious: int = 0
+    soundness_unsound: int = 0
+    soundness_items: list[dict] = field(default_factory=list)
     judge_model: str = ""
     items: list[ClaimVerdict] = field(default_factory=list)
     cost_usd: float = 0.0
@@ -85,6 +105,11 @@ class FaithfulnessReport:
             "fact_faithfulness_pct": self.fact_faithfulness_pct,
             "edge_unsupported": self.edge_unsupported,
             "edge_source_silent": self.edge_source_silent,
+            "soundness_total": self.soundness_total,
+            "soundness_sound": self.soundness_sound,
+            "soundness_dubious": self.soundness_dubious,
+            "soundness_unsound": self.soundness_unsound,
+            "soundness_items": self.soundness_items,
             "judge_model": self.judge_model,
             "cost_usd": round(self.cost_usd, 4),
             "report_path": self.report_path,
@@ -202,6 +227,56 @@ def judge_claims(
     return claims, cost
 
 
+def judge_soundness(
+    vault: Vault,
+    slug: str,
+    edges: list[ClaimVerdict],
+    narrative_body: str,
+    source_text: str,
+    *,
+    judge_model: str = DEFAULT_JUDGE_MODEL,
+) -> tuple[list[dict], float]:
+    """Soundness pass over the synthesized spine edges (the source_silent edges
+    faithfulness already isolated). For each, a judge decides whether the A→B
+    move is valid given the source — sound | dubious | unsound — NOT whether it
+    is stated (it is not, by design). The narrative body is passed so the judge
+    sees each edge in its spine context. Diagnostic only. Returns (items, cost)
+    where each item is {claim, section, verdict, reason}."""
+    if not edges:
+        return [], 0.0
+    edges_json = json.dumps(
+        [{"i": i, "edge": c.claim, "section": c.section} for i, c in enumerate(edges)],
+        ensure_ascii=False, indent=2,
+    )
+    result = llm.call_with_template(
+        "narrative_soundness",
+        {
+            "slug": slug,
+            "source_text": source_text,
+            "narrative_body": narrative_body,
+            "edges_json": edges_json,
+        },
+        model=judge_model,
+    )
+    llm.log_call(vault.append_log, "narrative_soundness", slug, result)
+    cost = result.cost_usd
+    parsed = result.parsed if not result.is_error else None
+    items: list[dict] = []
+    for i, c in enumerate(edges):
+        item = parsed[i] if isinstance(parsed, list) and i < len(parsed) and isinstance(parsed[i], dict) else {}
+        v = str(item.get("verdict", ""))
+        if v not in ("sound", "dubious", "unsound"):
+            # Judge failed / unparseable → treat as dubious (do not silently bless)
+            v = "dubious"
+        items.append({
+            "claim": c.claim,
+            "section": c.section,
+            "verdict": v,
+            "reason": str(item.get("reason", "")).strip() or ("judge failed" if parsed is None else ""),
+        })
+    return items, cost
+
+
 def write_report(vault: Vault, slug: str, report: FaithfulnessReport) -> Path:
     path = report_path(vault, slug)
     lines: list[str] = [
@@ -245,9 +320,27 @@ def write_report(vault: Vault, slug: str, report: FaithfulnessReport) -> Path:
             lines.append(f"- [{x.section}] {x.claim}")
         lines.append("")
 
+    unsound = [x for x in report.soundness_items if x["verdict"] == "unsound"]
+    dubious = [x for x in report.soundness_items if x["verdict"] == "dubious"]
+    if report.soundness_total:
+        lines += [
+            f"## spine 健全性 (合成エッジ {report.soundness_total} 本の運びの当否) "
+            f"— unsound {report.soundness_unsound} / dubious {report.soundness_dubious} / "
+            f"sound {report.soundness_sound}",
+            "",
+        ]
+        for x in unsound:
+            lines.append(f"- ✕ unsound [{x['section']}] {x['claim']} — {x['reason']}")
+        for x in dubious:
+            lines.append(f"- ~ dubious [{x['section']}] {x['claim']} — {x['reason']}")
+        if not unsound and not dubious:
+            lines.append("- 全エッジ sound。spine の運びに飛躍は検出されず。")
+        lines.append("")
+
     lines += [
         "## 読み方",
         "",
+        "- **spine 健全性** が構造の検算。`unsound` は B が A から follow しない＝枠組みの誤りの可能性大、`dubious` は飛躍/未明示前提あり。問題駆動 tree で一番教育的に効く層で、coverage も事実精度も見ない箇所。",
         "- **事実精度** が本命の hallucination 指標。`unsupported` の fact があれば誤りの可能性大。",
         "- **合成エッジ** は problem-driven tree の宿命: source は「問題→次の問題」を明示しない。"
         "これは tree の付加価値(解釈)であって誤りではないが、source 非依拠なので鵜呑みにせず照合する。",
@@ -286,6 +379,15 @@ def run(
     fact_unsupported = sum(1 for c in facts if c.verdict == "unsupported")
     fact_pct = round((fact_total - fact_unsupported) / fact_total * 100.0, 1) if fact_total else 0.0
 
+    # Soundness pass over the synthesized spine (the source_silent edges).
+    silent_edge_claims = [c for c in claims
+                          if c.verdict == "source_silent" and c.kind == "edge"]
+    soundness_items, soundness_cost = judge_soundness(
+        vault, slug, silent_edge_claims, narrative_body, source_text,
+        judge_model=judge_model,
+    )
+    cost += soundness_cost
+
     report = FaithfulnessReport(
         slug=slug,
         total=total,
@@ -298,6 +400,11 @@ def run(
         fact_total=fact_total,
         fact_supported=fact_supported,
         fact_faithfulness_pct=fact_pct,
+        soundness_total=len(soundness_items),
+        soundness_sound=sum(1 for x in soundness_items if x["verdict"] == "sound"),
+        soundness_dubious=sum(1 for x in soundness_items if x["verdict"] == "dubious"),
+        soundness_unsound=sum(1 for x in soundness_items if x["verdict"] == "unsound"),
+        soundness_items=soundness_items,
         judge_model=judge_model,
         items=claims,
         cost_usd=cost,
@@ -314,6 +421,9 @@ def run(
             "unsupported": unsupported,
             "source_silent": source_silent,
             "faithfulness_pct": f"{pct:.1f}",
+            "soundness_total": report.soundness_total,
+            "soundness_unsound": report.soundness_unsound,
+            "soundness_dubious": report.soundness_dubious,
             "judge_model": judge_model,
             "cost_usd": f"{cost:.4f}",
         },

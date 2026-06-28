@@ -125,7 +125,12 @@ def test_run_aggregates_and_writes_report(vault, monkeypatch):
         {"verdict": "source_silent", "evidence": ""},
     ]
     env = {"result": json.dumps(verdicts), "is_error": False, "usage": {}, "total_cost_usd": 0.05}
-    monkeypatch.setattr(subprocess, "run", _mock_llm_sequence(env))
+    # the 1 source_silent edge is then put through the soundness pass
+    soundness = {
+        "result": json.dumps([{"i": 0, "verdict": "unsound", "reason": "B から C は follow しない"}]),
+        "is_error": False, "usage": {}, "total_cost_usd": 0.03,
+    }
+    monkeypatch.setattr(subprocess, "run", _mock_llm_sequence(env, soundness))
 
     rep = faithfulness.run(vault, "slugX", TREE_BODY, "A という障害がある。", judge_model="sonnet")
     assert rep["total"] == 3
@@ -134,10 +139,15 @@ def test_run_aggregates_and_writes_report(vault, monkeypatch):
     assert rep["source_silent"] == 1
     assert rep["faithfulness_pct"] == pytest.approx(33.3, abs=0.1)
     assert rep["edge_source_silent"] == 1   # the ⟳ edge was synthesized
-    # report file exists and names the synthesized edge
+    # soundness pass judged that synthesized edge
+    assert rep["soundness_total"] == 1
+    assert rep["soundness_unsound"] == 1
+    # report file exists and names the synthesized edge + the soundness verdict
     path = vault.root / rep["report_path"]
     assert path.exists()
-    assert "source_silent" in path.read_text("utf-8")
+    text = path.read_text("utf-8")
+    assert "source_silent" in text
+    assert "spine 健全性" in text and "unsound" in text
 
 
 # ---------- annotate_inferred ----------
@@ -203,8 +213,13 @@ def test_narrative_draft_faithfulness_flags_synthesized_edge(vault, tmp_path, mo
         ]),
         "is_error": False, "usage": {}, "total_cost_usd": 0.04,
     }
-    # single strategy, coverage off: gen → cove → faithfulness judge
-    monkeypatch.setattr(subprocess, "run", _mock_llm_sequence(gen, cove, judge))
+    # soundness pass over the 1 synthesized edge
+    soundness = {
+        "result": json.dumps([{"i": 0, "verdict": "dubious", "reason": "因果の飛躍がある"}]),
+        "is_error": False, "usage": {}, "total_cost_usd": 0.03,
+    }
+    # single strategy, coverage off: gen → cove → faithfulness judge → soundness
+    monkeypatch.setattr(subprocess, "run", _mock_llm_sequence(gen, cove, judge, soundness))
 
     out = narrative_draft(
         vault, src, run_coverage=False, run_faithfulness=True, judge_model="sonnet",
@@ -215,4 +230,6 @@ def test_narrative_draft_faithfulness_flags_synthesized_edge(vault, tmp_path, mo
     assert fr["edge_source_silent"] == 1            # synthesized edge caught
     assert fr["unsupported"] == 0                    # no fabricated facts
     assert fr["fact_faithfulness_pct"] == 100.0      # both facts supported
+    assert fr["soundness_total"] == 1               # the edge went through soundness
+    assert fr["soundness_dubious"] == 1
     assert any("synthesized spine edge" in w for w in out["warnings"])

@@ -7,7 +7,8 @@ Why the active commands are shaped the way they are. Pulled out of SKILL.md: the
 - Coverage judging runs on a different model from the opus generator (`--judge-model`, default sonnet): dodges self-preference bias / reward hacking when a model grades its own output. Generation + gap-fix stay on opus.
 - Hold-out (`holdout_coverage_pct`): after the fix loop converges, coverage is re-measured on a fresh independent QA set the fixer never optimized against — the honest out-of-sample number vs the optimized in-sample `coverage_pct`.
 - Source archival: the stored source `.md` is the immutable verify-against truth (hard rule #3), matched by absolute path so re-running never duplicates it.
-- `--faithfulness`: precision direction, complements coverage's recall; judged by a different model to avoid self-preference bias.
+- Faithfulness is default-on (`--no-faithfulness` opt-out, 2026-06-29 — see decisions.md): precision direction, complements coverage's recall; judged by a different model to avoid self-preference bias. It is the machine substitute for the source cross-check the user does not do (SKILL hard rule #5), so it is not opt-in.
+- Soundness pass (inside the faithfulness run): the synthesized spine edges that faithfulness flags `source_silent` are provenance-only — "not stated", which is by design. A second judgment (`narrative_soundness`) asks the orthogonal question: is the A→B move *valid* given the source (sound/dubious/unsound)? This is the only check on the spine topology — the most pedagogically load-bearing, most plausibly-wrong layer, which neither coverage (recall) nor faithfulness (claim precision) covers. Reuses the already-extracted edges; not a separate command.
 
 ## derivation-scan
 - Sets scope even when the source omits the derivation: a result is a target whether or not its steps are present; skip markers ("略"/"面倒"/"補足参照"/"left as an exercise") flag the hard, high-value ones the source dodged.

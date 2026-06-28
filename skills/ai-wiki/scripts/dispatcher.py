@@ -177,10 +177,12 @@ def cmd_narrative_draft(argv: list[str]) -> dict:
              "peer tree per major section, no master hub (for multi-section papers)",
     )
     p.add_argument(
-        "--faithfulness",
+        "--no-faithfulness",
         action="store_true",
-        help="after commit, judge each tree's claims against its source "
-             "(precision direction); flags unsupported claims + synthesized edges",
+        help="skip the default-on post-commit faithfulness check (judge each "
+             "tree's claims against its source for precision + a soundness pass "
+             "over the synthesized spine edges). On by default: it is the machine "
+             "substitute for the source cross-check the user does not do",
     )
     p.add_argument(
         "--judge-model",
@@ -192,8 +194,9 @@ def cmd_narrative_draft(argv: list[str]) -> dict:
     p.add_argument(
         "--annotate-inferred",
         action="store_true",
-        help="mark synthesized spine edges in-tree with [~] (implies "
-             "--faithfulness); idempotent, validates before rewriting",
+        help="mark synthesized spine edges in-tree with [~] (forces the "
+             "faithfulness check even under --no-faithfulness); idempotent, "
+             "validates before rewriting",
     )
     p.add_argument(
         "--no-ingest-source",
@@ -217,7 +220,7 @@ def cmd_narrative_draft(argv: list[str]) -> dict:
         dry_run=args.dry_run,
         force_strategy=args.force_strategy,
         mode=args.mode,
-        run_faithfulness=args.faithfulness or args.annotate_inferred,
+        run_faithfulness=not args.no_faithfulness or args.annotate_inferred,
         judge_model=args.judge_model,
         annotate_inferred=args.annotate_inferred,
         ingest_source=not args.no_ingest_source,
