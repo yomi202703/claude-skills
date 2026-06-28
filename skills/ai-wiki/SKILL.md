@@ -7,7 +7,7 @@ description: Personal study vault (`~/ai-wiki/`) for learning from educational s
 
 ## Hard rules
 
-1. User reads narrative trees only. Do not file-ize concept definitions; only create `notes/<slug>.md` when the user explicitly externalizes a frustration point.
+1. narrative trees are the primary content unit, and the user's read surface is the tree rendered through chat (the discovery drill) — not the raw files in Obsidian. Do not file-ize concept definitions; only create `notes/<slug>.md` when the user explicitly externalizes a frustration point. (Exception: the 教科 DAG SVG is opened directly — gestalt is a visual modality chat can't carry; see that layer.)
 2. Never score the learner. Retrieval practice is not graded — you do not pass judgment on the person's ability with marks or tallies. In a drill (see the discovery drill), an answer that fails to cover the source is *not* a verdict on the user; it is only the trigger that fires card capture. Frame everything as "the source says X, your answer didn't reach X yet → here's a card," never as "you got it wrong."
 3. Source is the single source of truth. `sources/` pages are never overwritten. Re-ingesting the same arxiv ID is a no-op.
 4. Wikilinks are the primary currency. Unresolved `[[slug]]` renders as Obsidian "unresolved" — acceptable and normal.
@@ -86,7 +86,7 @@ Run `dispatcher.py derivations` after editing to validate.
 narrative tree は教科書の章単位で、しかも一本道。章をまたぐ「全体像」と、複数の流れが一つの結果に合流する構造は、木 (単一親) では描けない。教科 DAG はこれを埋める上位層:1 教科の全 tree を、章順でなく問題構造で疎な有向非巡回グラフに再切断した俯瞰地図。
 
 二層で運用する (詳細を二重に書かない):
-- 上層 = 教科 DAG (`maps/<subject>-dag.{json,html}`): 非線形・合流ありの全体像。一見性 (gestalt) 担当。疎 (骨格ノード ~12-18 個)。
+- 上層 = 教科 DAG (`maps/<subject>-dag.{json,html}`): 非線形・合流ありの全体像。一見性 (gestalt) 担当。疎 (骨格ノード ~12-18 個)。役割は二つに分かれる: `json` は AI 用 (discovery drill の問題生成器 + 真実源 + 検証対象)、`html`/SVG は人間用の視覚 gestalt。tree は読み口をチャットへ移した (hard rule #1) が、DAG の SVG は移さない — gestalt は視覚のモダリティで、チャット (線形) は原理的に運べない。ゆえに SVG は、tree を直接読まなくなった運用でも人間が直接ブラウザで開く唯一の資産。
 - 下層 = 既存の章/講 tree (`narratives/`、無改変): 一塊の詳細な流れ。学習担当。各 DAG ノードの `trees` が出所 tree へ降りる配線。
 - 詳細は新規に書かない。DAG (仕様) + tree (出所) を AI に渡せば、構造に沿ってノード単位の説明をその場で生成できる (`json` の `ai_usage` 参照)。
 
