@@ -1,6 +1,6 @@
 # Global working preferences
 
-These apply across every repository. A repo's own CLAUDE.md adds repo-specific detail and overrides these where they conflict (state the override explicitly).
+These apply across every repository. A repo's own CLAUDE.md adds repo-specific detail and overrides these where they conflict.
 
 ## Output style
 
@@ -16,6 +16,22 @@ When a repo keeps working docs, give them four roles and do not blur them:
 - archive = frozen history. Reference only.
 
 Completed work moves from TODO to decisions. It is not left checked-off in TODO. State (Active/Deferred) is orthogonal to priority: an item can be important yet Deferred because it is blocked. A Deferred item with no concrete trigger is not deferred — it is either Active or a "won't do". A "won't do" is recorded in decisions only (the dated call, with rationale) and removed from TODO — do NOT keep a "won't-do" index in TODO (it duplicates decisions and bloats the queue). When you need the list of rejected items to avoid re-proposing one, grep decisions (and archive) for the dated "won't do" calls before proposing.
+
+## Session start
+
+At the start of each session, orient from the repo's governance docs — read-only (surface, do not fix):
+
+- Read in order: STATUS (where we are) → TODO (next + blockers) → the last few decisions (recent why) → narrative tail if the repo has that role → README. If none exist, point to /claude-md.
+- While reading, flag inconsistencies you are confident about: completed work left in TODO Active; Deferred items with no unblock trigger; STATUS↔TODO contradiction; STATUS older than the latest decision; rationale hoarded in TODO instead of decisions; and — if a `.lavish/` workspace exists — its views looking stale vs the docs (point to /throughline to refresh).
+
+## Human-facing view layer (throughline / lavish)
+
+This is additive and does not redefine the four-role doc governance above.
+
+- Make the human's surface a read-only browser HTML, not terminal scrollback. A repo may keep a `.lavish/` workspace — a standing front of two panes: the flow (how we got here: walls → pivots, who decided) and the logic (how it works now: dataflow/structure). At junctures (a wall→pivot, a chunk closed), `/throughline` regenerates both from their sources.
+- view ≠ truth. Truth stays in decisions/TODO/code; the views are generated windows onto it. Freshness is a content hash of the source (stale-detectable); do not build auto-refresh (regenerate scrappily). Keep wording plain — the flow in spoken voice, the logic at a general engineer's level; no internal jargon.
+- Cross-project: the views currently running across projects are aggregated at `~/.lavish/home.sh` (localhost:8076 — scans live localhost view-servers; serve a repo's workspace and it shows up).
+- The repo-local 5th "narrative" role (durable, append-only frozen flow) stays repo-local unless explicitly promoted. Origin/design: the agentic-engineering repo's decisions (lavish-*/throughline-*/narrative-*).
 
 ## Do it yourself
 
