@@ -68,7 +68,7 @@ Dependency chain (order matters): L1's human-committed anchor becomes L2's arbit
 - The separate firewalled blind-handover deliverable (the split GT-creation form for external reviewers — firewall by absence, independent verdict not agree-toggle, one path back) → factcheck (composes review-server for S2/S6/S9; chosen at P2 when external non-technical reviewers matter).
 - Repo memory: CLAUDE.md + working-doc governance (成果物/) → claude-md (Scaffold step).
 - L3 self-origination — propose what to judge (the criteria themselves), no-GT only, proposal-only → consultant (composed-by, same relation as gemma-prompt / review-server / claude-md; the owner ratifies, G3/G10). judge-loop holds the axis; consultant holds the explore/compress.
-- Fan-out to independent parallel main sessions (branch-point handoff — main-to-main over files, not lossy subagents; each stream cold-restartable, rejoined later by the PM=成果物/) → task-handoff (grill-me gates the branch: fix integration target/trigger/shared-output-schema before branching). Available at any phase where work splits into independent streams.
+- Fan-out to independent parallel main sessions (branch-point handoff — main-to-main over files, not lossy subagents; each stream cold-restartable, rejoined later via a Deferred join-item in the issuing TODO) → handoff (author the branch-point context as foundation.md; grill-me optionally gates the branch when reconvergence is non-trivial). Available at any phase where work splits into independent streams.
 - This skill adds only: phase sequencing, gate enforcement, grill-hook firing, and the K-run/flutter/distribution-diff harness.
 
 ## Ledger

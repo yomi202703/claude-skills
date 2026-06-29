@@ -52,7 +52,7 @@ Deliberately rough — what to learn is the raw-cases → cluster → axis shape
 - One systemic finding ≠ N per-item flags — enforced at the exit, above.
 
 ## Running as a handed-off stream
-This consultant is built to run cold on the far side of a task-handoff: a separate main session opens the case directory, reads the evidence and the spec boundary as its context, and self-drives the explore→smelt→exit loop with no conversation memory. It does not auto-report back — it lands its axis+case pairs at the agreed output path and records completion as a registry row; the PM (owner) collects and ratifies. Treat the read list you are handed as the whole of your context.
+This consultant is built to run cold on the far side of a handoff: a separate main session opens the case directory, reads the evidence and the spec boundary as its context, and self-drives the explore→smelt→exit loop with no conversation memory. It does not auto-report back — it lands its axis+case pairs at the agreed output path and records completion as a registry row; the PM (owner) collects and ratifies. Treat the read list you are handed as the whole of your context.
 
 ## Boundaries (what this skill does not own)
 - It does not own phases, gates-as-process, or routing — that is judge-loop. consultant holds only L3's "how to explore and compress", and judge-loop composes it (the same composed-by relation as gemma-prompt / review-server). Do not absorb the orchestrator's responsibilities.
