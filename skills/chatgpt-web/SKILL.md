@@ -19,6 +19,18 @@ python3 scripts/ask.py --timeout 400 "..."  # long jobs
 
 `ask.py` launches the shared Chrome if down and opens a ChatGPT tab if absent. Prefer file handoff for long/important output: ask ChatGPT to write its answer into a fenced block you then read, rather than trusting the DOM capture.
 
+## Repo-aware consult (nav.py)
+
+`ask.py` sends a blind question. `nav.py consult` gives ChatGPT pseudo directory-exploration over a repo: it briefs ChatGPT with the file tree + a `fetch` protocol, then auto-serves (read-only) every file/grep ChatGPT requests, and prints ChatGPT's final answer. Use it to get a reasoning-strong second opinion that has actually read the relevant files (e.g. a local Gemma agent stuck on a cross-file bug consulting ChatGPT).
+
+```
+python3 scripts/nav.py consult /abs/path/to/repo "what's wrong and give a unified diff"
+```
+
+- Autonomous and blocking: returns once ChatGPT stops fetching (or after a few rounds). Slow per round — a faster ChatGPT model helps a lot.
+- Read-only by design: it never edits. Apply ChatGPT's diff yourself and run the tests to verify.
+- Human-driven variant: `nav.py seed <repo> "task"` to brief the tab, then `nav.py serve <repo>` in the background to auto-answer fetches while you chat with ChatGPT normally.
+
 ## One-time setup: sign in
 
 The dedicated profile is fresh per surface, so on first use `ask.py` exits 3 (NOT_SIGNED_IN or BLOCKED). Once done it persists:

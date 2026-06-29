@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Single shared review server — diagnostic / GT-creation / evaluation modes.
+"""The DEVELOPER review server — diagnostic / GT-management / evaluation modes.
 
 Domain-agnostic template (S1, config-driven). The judgment vocabulary, axes,
 and unit are read from contract.json (S2), never hard-coded here. Code is a
 template: adapt data.py for your domain; this file should not need changes.
 
+This server is developer-only: every surface sees everything. There is NO
+blind/GT-creation route here — blind, gold-eligible GT is created in the
+factcheck skill (firewall by ABSENCE, the strongest form) and flows back via
+POST /ingest (S9). This server views, receives, promotes, and evaluates.
+
 Gates wired structurally:
-  S3  GT-creation path (render_review) NEVER calls adapter.judges() — a
-      reviewer cannot see any machine output until commit. The firewall is the
-      RENDERING, not a login: mode is chosen by route (/diag vs /review), no
-      auth by default. Authentication / reviewer attribution is a later concern
-      (grill hook), added only when untrusted external blind reviewers arrive.
-  S4  commit stores the blind verdict, THEN reveals judges + divergence.
-  S8  every GET is read-only; only POST /commit and POST /ingest write.
-  S9  one ingestion path (POST /ingest, inbox CSV).
+  S3  Roles by route, no login. The blind firewall is NOT here (the dev surface
+      shows all judges by design); it lives in the factcheck skill by absence.
+      Verdicts that would be saved against a visible machine answer are anchored
+      → silver, never gold (enforced in store.ALLOWED).
+  S8  every GET is read-only; only POST /promote and POST /ingest write.
+  S9  one ingestion path (POST /ingest, inbox CSV) — where factcheck GT lands.
   S10 provenance footer (live vs snapshot) on every page; --package excludes
       the answer DB / inbox / caches.
 
@@ -50,7 +53,7 @@ STORE = Store(DB_PATH)
 # means the last process crashed (atexit didn't fire) → doctor can flag it.
 RUNFILE = os.path.join(os.path.dirname(os.path.abspath(DB_PATH)), ".review-run.json")
 SOURCE = "live"  # flipped to "snapshot" by --snapshot marker (S10)
-# No auth by default: mode is chosen by route (/diag vs /review). Reviewer
+# No auth by default: developer surface, mode is a route. Reviewer
 # attribution defaults to a constant; named/authenticated reviewers are a later
 # grill hook (review-server CHOICES: auth strength), wired only when external
 # blind reviewers are onboarded — not pre-built.
@@ -63,8 +66,6 @@ REVIEWER = "anon"
 # never leak onto a reviewer's screen. Default Japanese for this template.
 UI = {
     "title": "レビューサーバー",
-    "pick_mode": "下記を選択してください",
-    "mode_gt": "GT作成（ブラインド）",
     "mode_dev": "開発者診断",
     "nav_aggregate": "集計",
     "nav_eval": "評価",
@@ -73,15 +74,6 @@ UI = {
     "src_live": "ライブ（最新）",
     "src_snapshot": "スナップショット（凍結）",
     "who_dev": "開発者",
-    "who_gt": "GT作成",
-    "gt_index": "GT作成 — ユニット一覧",
-    "gt_reason": "理由",
-    "gt_evidence": "根拠（本文の行をクリックで選択）",
-    "gt_ev_selected": "選択した根拠",
-    "gt_commit": "確定して開示",
-    "gt_committed": "を確定しました",
-    "gt_stored": "あなたのブラインド判定を保存しました。以下が開示された機械の判定です。",
-    "gt_next": "次へ",
     "role_proposer": "提案器(Claude)",
     "role_production": "本番判定器(Gemma)",
     "dev_header": "開発者診断 — すべての判定器が見えます",
@@ -164,10 +156,6 @@ button{font:inherit;font-weight:600;color:#fff;background:var(--accent);border:0
 button:hover{background:#314bc0}
 input[type=text],input:not([type]){font:inherit;width:100%;border:1px solid var(--line);border-radius:7px;padding:.5em .65em;background:var(--surface)}
 input:focus{outline:2px solid var(--accent-weak);border-color:var(--accent)}
-.modes{list-style:none;padding:0;margin:1.1em 0;display:grid;gap:.75em}
-.modes a{display:block;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
-padding:1em 1.15em;font-weight:600;font-size:16px;color:var(--ink);box-shadow:0 1px 2px rgba(20,30,50,.04)}
-.modes a:hover{border-color:var(--accent);text-decoration:none;box-shadow:0 3px 12px rgba(59,91,219,.12)}
 .radio-row{display:flex;flex-wrap:wrap;gap:.5em;align-items:center}
 .radio-row label{border:1px solid var(--line);border-radius:999px;padding:.3em .85em;font-size:14px;cursor:pointer}
 .radio-row input{margin-right:.35em}
@@ -204,7 +192,8 @@ td.num,th.num{text-align:right}
 def page(body: str, *, who: str = "") -> bytes:
     bar = (
         f'<div class=bar><a class=brand href="/">{UI["title"]}</a>'
-        f'<a href="/review">{UI["mode_gt"]}</a><a href="/diag">{UI["mode_dev"]}</a></div>'
+        f'<a href="/diag">{UI["mode_dev"]}</a><a href="/gt">{UI["nav_gt_manage"]}</a>'
+        f'<a href="/eval">{UI["nav_eval"]}</a></div>'
     )
     foot = (
         f'<div class=foot>{UI["foot_source"]}: <b>{_src_label()}</b> · '
@@ -220,54 +209,11 @@ def page(body: str, *, who: str = "") -> bytes:
     return doc.encode("utf-8")
 
 
-def highlight(text: str, evidence: list) -> str:
-    """Highlight evidence lines (S11: the human confronts the evidence)."""
-    keep = {e.get("idx") for e in evidence}
-    out = []
-    for line in text.splitlines():
-        idx = line.split(":", 1)[0].strip()
-        esc = html.escape(line)
-        try:
-            hit = int(idx) in keep
-        except ValueError:
-            hit = False
-        out.append(f"<mark>{esc}</mark>" if hit else esc)
-    return "<pre>" + "\n".join(out) + "</pre>"
-
-
-def highlight_clickable(text: str) -> str:
-    """Input lines as click-to-select evidence (GT-creation, S11). The reviewer
-    picks evidence by clicking the actual line, not by typing line numbers."""
-    out = []
-    for line in text.splitlines():
-        raw = line.split(":", 1)[0].strip()
-        try:
-            di = str(int(raw))
-        except ValueError:
-            di = ""
-        out.append(f'<span class=ln data-idx="{di}" onclick="togEv(this)">{html.escape(line)}</span>')
-    return "<pre>" + "\n".join(out) + "</pre>"
-
-
-def render_judges(judges: dict) -> str:
-    diverge = " diverge" if divergence(judges) else ""
-    out = f'<div class="j{diverge}">'
-    for role in ("proposer", "production"):
-        j = judges.get(role) or {}
-        out += (
-            f'<div><span class=role>{UI["role_" + role]}</span>: '
-            f'<b>{html.escape(str(j.get("verdict","")))}</b> — {html.escape(str(j.get("reason","")))}</div>'
-        )
-    if diverge:
-        out += f'<div style="color:var(--flag);font-weight:600;margin-top:.3em">{UI["dev_divergence"]}</div>'
-    return out + "</div>"
-
-
 # Diagnostic SPA shell. Three panes (unit list / input+evidence / every judge)
 # plus a persistent Problems pane (the divergence queue) and j/k keyboard nav —
 # the developer surface's mental model is code review (W2). Vanilla JS over the
-# read-only /api endpoints; stdlib only, no build step. The GT-creation surface
-# (/review) stays deliberately minimal and never loads judges (S3).
+# read-only /api endpoints; stdlib only, no build step. Blind GT-creation is not
+# here — it is the factcheck skill (firewall by absence).
 DIAG_HTML = """<!doctype html><html lang=ja><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
 <title>レビューサーバー · 開発者診断</title>
@@ -320,7 +266,7 @@ const L=__LABELS__;
 let UNITS=[], cur=null;
 document.getElementById('hdr').innerHTML=
   '<a class=brand href="/">'+L.title+'</a><span style="color:#8a93a3">'+L.header+'</span>'+
-  '<a href="/review">'+L.nav_gt+'</a><a href="/gt">'+L.nav_gtmanage+'</a><a href="/eval">'+L.nav_eval+'</a>'+
+  '<a href="/gt">'+L.nav_gtmanage+'</a><a href="/eval">'+L.nav_eval+'</a>'+
   '<span class=keyhint>'+L.keyhint+'</span>';
 document.getElementById('input').innerHTML='<p style="color:var(--muted)">'+L.select+'</p>';
 document.getElementById('problabel').textContent=L.problems;
@@ -432,21 +378,25 @@ class H(BaseHTTPRequestHandler):
         # adapter; without this the percent-encoded key never resolves.
         parts = [urllib.parse.unquote(p) for p in u.path.split("/") if p]
         if not parts:
-            return self._send(self.landing_page())
-        # Diagnostic mode is a single-page 3-pane surface (developer ergonomics,
-        # W2): the SPA shell at /diag (and /diag/<unit> deep-link) reads these
-        # read-only JSON endpoints. Judges ARE exposed here — this is developer
-        # mode (S3 firewall binds /review, not /diag).
+            # Land directly on the primary surface (/diag). No chooser interstitial
+            # — /diag, /gt, /eval are all in the bar; making the developer pick
+            # before seeing anything was needless friction.
+            self.send_response(302)
+            self.send_header("Location", "/diag")
+            self.end_headers()
+            return
+        # This is the DEVELOPER server (S1): every surface sees everything. There
+        # is no blind/GT-creation route here — blind, gold-eligible GT is created
+        # in the factcheck skill (firewall by ABSENCE) and flows back via POST
+        # /ingest (S9). The dev server views, receives, promotes, and evaluates.
+        # Diagnostic mode is a single-page 3-pane SPA (developer ergonomics, W2)
+        # reading these read-only JSON endpoints.
         if parts[:2] == ["api", "units"]:
             return self._send_json(self.api_units())
         if parts[:2] == ["api", "diag"] and len(parts) == 3:
             return self._send_json(self.api_diag(parts[2]))
         if parts[0] == "diag":
             return self._send(self.diag_app())
-        if parts[0] == "review" and len(parts) == 1:
-            return self._send(self.units_page())
-        if parts[0] == "review" and len(parts) == 2:
-            return self._send(self.review_page(parts[1]))   # S3: no judges here
         if parts[0] == "aggregate":
             return self._send(self.aggregate_page())
         if parts[0] == "eval":
@@ -458,93 +408,11 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         u = urllib.parse.urlparse(self.path)
         parts = [urllib.parse.unquote(p) for p in u.path.split("/") if p]
-        if parts[:1] == ["commit"] and len(parts) == 2:
-            return self._send(self.commit(parts[1]))
         if parts[:1] == ["promote"] and len(parts) == 2:
             return self._send(self.promote(parts[1]))
         if parts == ["ingest"]:
             return self._send(self.ingest())
         return self._send(page(UI["not_found"]), 404)
-
-    # pages -------------------------------------------------------------------
-    def landing_page(self) -> bytes:
-        # No login. Mode = route. The anchoring firewall lives in what each
-        # route renders (S3), not in authentication.
-        return page(
-            f"<h2>{UI['title']}</h2>"
-            f"<p>{UI['pick_mode']}</p>"
-            '<ul class=modes>'
-            f'<li><a href="/review">{UI["mode_gt"]}</a></li>'
-            f'<li><a href="/diag">{UI["mode_dev"]}</a></li>'
-            "</ul>"
-        )
-
-    def units_page(self) -> bytes:
-        # GT-creation index only — deliberately minimal (anti-IDE, S3/W2): a
-        # plain unit list, no judges, no aggregate nav. The rich 3-pane surface
-        # is developer-only (/diag).
-        rows = "".join(
-            f'<li><a href="/review/{html.escape(u["unit_key"])}">{html.escape(u["label"])}</a></li>'
-            for u in ADAPTER.units()
-        )
-        return page(f"<h3>{UI['gt_index']}</h3><ul>{rows}</ul>", who=UI["who_gt"])
-
-    def review_page(self, unit_key: str) -> bytes:
-        # S3 ANCHORING FIREWALL: input + evidence ONLY. Never call ADAPTER.judges().
-        inp = ADAPTER.unit_input(unit_key)
-        axes = "".join(
-            f'<div class=card><h4>{html.escape(a["label"])}</h4><div class=radio-row>'
-            + "".join(
-                f'<label><input type=radio name="v_{a["key"]}" value="{html.escape(opt)}">{html.escape(opt)}</label>'
-                for opt in a["vocabulary"]
-            )
-            + "</div></div>"
-            for a in CONTRACT["axes"]
-        )
-        script = (
-            "<script>const sel=new Set();function togEv(el){const i=el.dataset.idx;if(!i)return;"
-            "if(sel.has(i)){sel.delete(i);el.classList.remove('selev')}else{sel.add(i);el.classList.add('selev')}"
-            "const a=[...sel].sort((x,y)=>x-y);document.getElementById('evidence').value=a.join(',');"
-            "document.getElementById('evdisp').textContent=a.length?a.join(', '):'\\u2014';}</script>"
-            "<style>.ln{cursor:pointer;border-radius:3px}.ln:hover{background:#eef2ff}.selev{background:var(--mark)}</style>"
-        )
-        return page(
-            f"<h3>{html.escape(unit_key)}</h3>"
-            + f'<div class=card><h4>{UI["gt_evidence"]}</h4>{highlight_clickable(inp["text"])}</div>'
-            + f'<form method=post action="/commit/{html.escape(unit_key)}">'
-            + axes
-            + f'<div class=card><h4>{UI["gt_reason"]}</h4><input type=text name=reason>'
-            + f'<h4 style="margin-top:.8em">{UI["gt_ev_selected"]}</h4>'
-            + '<input type=hidden id=evidence name=evidence>'
-            + '<p id=evdisp style="margin:.2em 0;color:var(--muted)">&#8212;</p></div>'
-            + f"<button>{UI['gt_commit']}</button></form>" + script,
-            who=UI["who_gt"],
-        )
-
-    def commit(self, unit_key: str) -> bytes:
-        f = self._form()
-        revealed = ""
-        for a in CONTRACT["axes"]:
-            verdict = f.get(f"v_{a['key']}", "")
-            if not verdict:
-                continue
-            STORE.append(
-                unit_key=unit_key, axis_key=a["key"], verdict=verdict,
-                reason=f.get("reason", ""),
-                evidence=json.dumps([s.strip() for s in f.get("evidence", "").split(",") if s.strip()]),
-                reviewer=REVIEWER, provenance="blind", tier="silver",
-                versions=_versions(),
-            )
-            # S4: reveal AFTER the blind verdict is stored.
-            revealed += f"<h4>{html.escape(a['label'])}</h4>" + render_judges(
-                ADAPTER.judges(unit_key, a["key"])
-            )
-        return page(
-            f"<h3>{html.escape(unit_key)} {UI['gt_committed']}</h3>"
-            f'<div class=card><p style="margin:0 0 .6em">{UI["gt_stored"]}</p>{revealed}</div>'
-            + f'<p><a href="/review">{UI["gt_next"]} →</a></p>',
-            who=UI["who_gt"],
-        )
 
     # Diagnostic SPA (W2: 3-pane + Problems queue + keyboard nav) ------------
     def api_units(self) -> dict:
@@ -580,7 +448,7 @@ class H(BaseHTTPRequestHandler):
             "diverges": UI["dev_diverges"], "none": UI["dev_none"],
             "header": UI["dev_header"], "keyhint": UI["dev_keyhint"],
             "search": UI["dev_search"], "only_div": UI["dev_only_div"], "count": UI["dev_count"],
-            "nav_gt": UI["mode_gt"], "nav_eval": UI["nav_eval"], "title": UI["title"],
+            "nav_eval": UI["nav_eval"], "title": UI["title"],
             "nav_gtmanage": UI["nav_gt_manage"],
             "role_proposer": UI["role_proposer"], "role_production": UI["role_production"],
         }

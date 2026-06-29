@@ -12,3 +12,9 @@
 - throughline = 作業を貫く線を2本: 動きの線(流れ・源=会話・templates/flow.html)と、かたちの線(ロジック・源=コード/決定・templates/logic.html)。両方ソースから引き直す=更新。
 - 分離案(ロジックを html-deck に)却下 ── 一動作で両方が自然。html-deck の削る規律は logic 生成の方法として内部で流用。
 - language ルールは両 view に適用(流れ=その場の人間語 / ロジック=一般エンジニアが分かる語、内部語ゼロ)。
+
+## 2026-06-30 成果物/ fallback を `handoffs/` から外す(task-handoff との不整合修正)
+- 発端: オーナー指摘「task-handoff と throughline が不整合」。
+- 不整合の実体: `成果物/` fallback が `成果物/handoffs/throughline/…` をハードコードし、task-handoff の領分である `handoffs/`(cold main が実行するタスク契約の置き場)に squat していた。throughline の出力は人が読む派生ビュー(view≠真実)で handoff 契約ではない ── カテゴリ違い。かつ「スロット配置は repo-shape に委ねる」という本 skill 自身の規律(末尾)とも矛盾。
+- 修正: fallback を `成果物/views/throughline/…` に変更。`handoffs/` 下には置かない理由(task-handoff の契約 vs ここの派生ビュー)を一行で添えた。task-handoff 側も境界を明文化(task-handoff _dev 2026-06-30 参照)。
+- ripple-check(同日): 当初 fallback 行に「スロットは repo-shape が macro 層に定める」と添えたが overclaim ── repo-shape:33 が予約する view スロットは `.lavish/`/`narrative/` で `成果物/views/` ではない。委譲は既に末尾行(repo-shape が定める)にあり重複かつ不正確なので削除。`成果物/views/` は `.lavish/` 不在時の素の fallback パスとして残す(repo-shape スロットを名乗らない)。

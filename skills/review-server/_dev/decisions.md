@@ -77,3 +77,20 @@ runfile lifecycle = "leftover means crash": removed via atexit on normal exit + 
 追記3(同日・オーナー指摘): 一覧(index)を、確定済みユニットについて レビュアー自身の判定(軸別)＋理由＋✓判定済/未判定 を表示する形に変更(従来は素のリンク＋✓のみで進捗・自分の判定内容が見えなかった)。S3 との切り分けを明記: S3 が禁じるのは commit 前に 機械の出力 を見せること。表示するのは レビュアー自身が確定した自分の判定＝機械出力でないので firewall 違反でない。未判定ユニットには何も出さない(機械の答えはそもそも存在しない)。確定済みもリンクは残し再判定可(append-only=改訂は新行・store.latest_by_unit が最終行採用)。検証: 2件確定後 index に軸別判定＋理由＋2/6完了が出る・機械出力ヒット0・selftest PASS。設計点として一般化: ブラインド面で「自分の過去判定の表示」は firewall に抵触しない(機械出力でない)。進捗・自己一貫性の確認に必要なので出してよい。
 
 追記2(同日・オーナー指摘): レビュアー面の「GTをエクスポート（CSV）」リンクを撤去。根拠=判定は commit 時点で内部(fc_gt.db)に自動保存されており、レビュアーの関心事は「判定する→保存される」だけ。export はレビュアーが押すボタンでなく、返却パッケージから GT を回収して開発側へ戻す オペレータ操作。設計点として一般化: レビュアー面に出すのは「レビュアーがやること」だけ。永続化は副作用として自動、回収/戻し(S9)はオペレータの面に分離する。実装=GET /export ルートと export リンクを削除し、export を `fc_server.py --export [PATH]` の CLI(オペレータ)へ移動(列は dev /ingest と完全一致のまま)。selftest は新 module 関数 export_inbox_csv() を直接呼ぶ形に更新(旧 dummy-handler ハック撤去)。検証: index に export 文言0・GET /export=404・CLI export が同一 fc_gt.db を読んで inbox CSV 出力・selftest PASS(S9往復含む)。
+
+## 2026-06-27 例 fc-handover を別スキル factcheck へ昇格（このリポから移設）
+追記1〜4(同日)で育てた examples/fc-handover は、オーナー裁定で独立スキル `factcheck` に昇格し `factcheck/template/` へ移設（理由=skill としての鋭さ＋汎用、judge-loop 横断.md 2026-06-27）。review-server は「開発者の単一サーバ＋ S1-S12 所有」に純化し、別成果物（ブラインド引き渡し）の形は factcheck へ compose で委譲（SKILL.md description/S1/S3/CHOICES/Composition を更新）。factcheck は gate を再所有せず S2/S6/S9 を本スキルから借りる（F2 回避）。examples/ ディレクトリは廃止。以後この形の更新は factcheck/_dev に記録。
+
+## 2026-06-27 同居型ブラインド面(/review)を撤去 — S3 改訂（オーナー裁定）
+発端(オーナー): 「レビューサーバーは GT作成(ブラインド)いらない。機能から外れたものでしょ、もう」。factcheck を切り出した今、review-server に残る /review(render-time 防火壁)は冗長。
+裁定根拠(tidy 以上): render-time ブラインドは弱い。/review は judges を描かないだけで auth 無し＝同じ人が別タブで /diag を開けば答えが見える＝その gold は覗ける汚染疑い。factcheck の不在防火壁は答えが無いので auth 無しで構造的に強い＝上位互換。S3 の「render-time or by-absence」併記はブラインドに関して by-absence 一本へ畳む。
+決定: review-server は開発者専用に純化＝diagnostic(/diag)＋GT管理(/gt: ingest+promote)＋evaluation(/eval)。ブラインド/gold 生成は factcheck だけ。dev サーバ上の人間判定は anchored→silver のみ(store.ALLOWED で担保)、gold には factcheck からの blind 流入を /ingest(S9)→/gt 昇格で。
+実装(template): server.py から /review・/commit・units_page・review_page・commit・highlight/highlight_clickable/render_judges・ランディングと /diag ナビの /review リンク・死んだ UI 文字列(mode_gt/gt_*等)を削除。landing/bar を開発者ナビ(diag/gt/eval)へ。docstring と S3/S4 コメントを「防火壁は factcheck の不在側」に改訂。selftest を blind 依存から S9(inbox CSV→/ingest)→/gt promote→/eval gold 上昇へ組み替え＋ /review・/commit が 404 を確認。検証: 構文OK・selftest 全green・/review,/commit=404・/diag,/gt,/eval,/ingest 健在・ランディングに /review リンク0。
+SKILL.md 改訂: description/Three-modes/CHOICES(ブラインド面 form は choice でなく factcheck 固定)/S3(不在防火壁・render-time 撤退)/S4(reveal-after-commit 廃止→divergence は dev 側、人間 GT は flow-back 後)/W2/W4/W7/Composition(html-deck blind 層・judge-loop 行)を factcheck 委譲に統一。factcheck/SKILL.md と judge-loop SKILL.md(P2/Composition)も render-time 撤退に追従。
+判定の中身(contract/judges fixtures)は無改変。これは S3 ゲートの改訂＝オーナー裁定として記録(G6)。
+
+## 2026-06-27 ランディングのチューザー撤去 — / は /diag に直着地
+発端(オーナー): 「開発者診断/GT管理/評価の3つに分ける landing、なんで？」。3モード自体はライフサイクル(診断→GT管理→評価)の別レンズで1サーバ(S1)＝妥当。だが「下記を選択してください」のチューザー landing は、本セッションで潰してきた無駄な中間画面と同型(バーに既に3つある)。
+決定: landing_page を撤去し、do_GET の `/` を 302 で /diag(主面)へリダイレクト。/gt・/eval はバーから。3モードは残す。死んだ pick_mode UI 文字列と .modes CSS も除去。
+据え置き(任意): /gt(管理)と /eval(測定)は GT ストアの別ビューゆえ将来1面2セクションに畳める余地。/diag はユニット単位検査で本質別。今回は触らない。/aggregate(乖離の素リスト)は /diag の Problems と重複し未リンク化したが今回は残置(別掃除)。
+検証: selftest 組み替え(「/ が /diag に着地」= raw マーカー `<body class=diag>` で判定。JSON labels は \u エスケープされるため raw を使用)→全green。doctor GO。/ →302 /diag・チューザー文言0。

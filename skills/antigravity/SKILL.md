@@ -1,6 +1,6 @@
 ---
 name: antigravity
-description: Drive the Antigravity app's agent (Gemini) from Claude — send a prompt, run its skills, capture the reply — over the app's always-open CDP debug port. Use to delegate to capabilities Claude lacks (audio/video/multimodal, Google-side, the user's gemini skills in ~/.gemini/config/skills), or to get a second, non-correlated opinion. Triggers — "ask Antigravity", "Geminiに投げて", "antigravityで〜させて", "/antigravity".
+description: Drive the Antigravity app's agent from Claude — send a prompt, run its skills, capture the reply — over the app's always-open CDP debug port. Use to delegate to capabilities Claude lacks, or to get a second, non-correlated opinion.
 ---
 
 # antigravity

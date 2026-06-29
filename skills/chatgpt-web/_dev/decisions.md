@@ -31,3 +31,11 @@
 - 根拠：早期return（回答丸ごと取りこぼし）は stuck stop-button（timeout経路の reload+直読みで結局回収できる）より重い失敗。正しさを優先し、stuck は ~40s 周期の reload に寄せて時短も両立。
 - gemini-web/scripts/ask.py も同一修正でミラー（robustness設計共有のため。ユーザー承認済み）。両ファイル py_compile OK。
 - 未実機検証（Chrome/sign-in 要）。次回 chatgpt-web 実使用時に、複雑タスクで前置きでなく本回答が返るか確認する。
+
+## 2026-06-27 追加：nav.py（リポ探索つきChatGPT相談）
+
+- scripts/nav.py を新設。ChatGPTにツリー＋fetchプロトコルを渡し、要求されたREAD/GREP/LS/TREEをread-onlyで自動充足してディレクトリ探索を疑似再現する。cdp.py/ask.py を再利用。
+- サブコマンド: consult（自律1ショット＝brief投入→fetch自動応答→最終回答をstdout）／seed／serve（人間主導でタブ監視・自動応答）／brief。
+- 実証: nav-demoのクロスファイルbug（discount.pyのpercent未換算）を、ツリーのみ提示→ChatGPTがfetch→自動応答→正しいdiff、で特定。さらに pi(Gemma) が `nav.py consult` を自分で叩き、diff適用→`python3 src/main.py`→768.0 まで自律完走。SKILL.md に「Repo-aware consult」節を追記済み。
+- 設計判断: 編集はnav側でやらない（read-only）。適用＋テストは呼び出し側（pi/Gemma等）。安全＝リポ直下スコープ＋実在チェック＋ファイル/返信サイズ上限。遅延が実課題で、ChatGPT側の速いモデルが効く。実装中の発見: コードブロックは textContent だと改行が潰れる→innerText で取得。serveにも ask.py の reload_recover を組込み（推論モデルの空ストール対策）。
+- 保留（要オーナー判断）: サブコマンド名 `consult` が既存スキル `consultant` と概念的に紛らわしい。改名候補 ask-repo / explore / review。既定案は ask-repo。TODO参照。

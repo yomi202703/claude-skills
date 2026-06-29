@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Developer smoke test — boot the server on an ephemeral port against a throw-
-away DB and exercise the whole loop end-to-end, so a host who adapted data.py /
-contract.json can confirm in one command that they did not break the contract:
+away DB and exercise the developer loop end-to-end, so a host who adapted
+data.py / contract.json can confirm in one command that they did not break the
+contract:
 
   - landing + diagnostic API respond, units have the expected shape
-  - the S3 firewall holds: /review never contains the machine's verdict/reason
-  - the loop closes: commit (blind) -> /gt promote -> /eval measures gold
-  - the S6 gate holds in the running server
+  - this is the DEVELOPER server: there is NO blind /review route (404) — blind
+    GT is created in the factcheck skill and flows back via POST /ingest (S9)
+  - the loop closes: ingest blind GT (one path, S9) -> /gt promote -> /eval gold
+  - the S6 gate holds in the running server (silver vs gold)
 
   python3 selftest.py      # exit 0 = pass, 1 = fail
 
@@ -15,10 +17,13 @@ Standard library only. Uses REVIEW_DB to keep your real gt.db untouched.
 """
 from __future__ import annotations
 
+import csv
+import io
 import json
 import os
 import tempfile
 import threading
+import urllib.error
 import urllib.parse
 import urllib.request
 from http.server import HTTPServer
@@ -32,6 +37,14 @@ def expect(name: str, cond: bool, detail: str = "") -> None:
         FAILS.append(name)
 
 
+def status(opener, p: str, method: str = "GET", data: bytes | None = None) -> int:
+    try:
+        req = urllib.request.Request(opener + p, data=data, method=method)
+        return urllib.request.urlopen(req).status
+    except urllib.error.HTTPError as e:
+        return e.code
+
+
 def main() -> int:
     tmp = tempfile.mkdtemp()
     os.environ["REVIEW_DB"] = os.path.join(tmp, "selftest.db")
@@ -43,51 +56,59 @@ def main() -> int:
     t = threading.Thread(target=httpd.serve_forever, daemon=True)
     t.start()
     base = f"http://localhost:{port}"
+    inbox = os.path.join(os.path.dirname(os.path.abspath(server.__file__)), "inbox")
+    inbox_file = os.path.join(inbox, "_selftest.csv")
 
     def get(p: str) -> str:
         return urllib.request.urlopen(base + p).read().decode()
 
-    def post(p: str, form: dict) -> str:
-        data = urllib.parse.urlencode(form).encode()
-        return urllib.request.urlopen(urllib.request.Request(base + p, data=data, method="POST")).read().decode()
-
     try:
-        # 1. surfaces respond
-        expect("landing responds", "<" in get("/"))
+        # 1. surfaces respond; / lands directly on /diag (no chooser interstitial).
+        #    The diag SPA marks its body class=diag (raw in the HTML, unlike the
+        #    \u-escaped JSON labels), so this is a stable landing marker.
+        expect("/ lands on /diag", "<body class=diag>" in get("/"))
         units = json.loads(get("/api/units"))["units"]
         expect("api/units returns units", bool(units), f"{len(units)} units")
 
-        # pick a unit + first axis from the live contract
         axis = server.CONTRACT["axes"][0]
         unit = units[0]["unit_key"]
-        uq = urllib.parse.quote(unit)
         verdict = axis["vocabulary"][0]
 
-        # 2. firewall (S3): the machine's reason for this unit/axis must NOT be on /review
-        machine = server.ADAPTER.judges(unit, axis["key"]).get("production", {}) or {}
-        review = get(f"/review/{uq}")
-        reason = machine.get("reason", "")
-        leaked = bool(reason) and reason in review
-        expect("S3 firewall: /review hides machine reason", not leaked, "machine reason leaked into /review")
+        # 2. no blind surface on the developer server — it is the factcheck skill's
+        #    job (firewall by absence). /review and POST /commit must be gone.
+        expect("no blind /review route (404)", status(base, "/review/" + urllib.parse.quote(unit)) == 404)
+        expect("no POST /commit route (404)", status(base, "/commit/x", "POST", b"v=1") == 404)
 
-        # 3. commit a blind verdict, then it must reveal the machine (S4)
-        revealed = post(f"/commit/{uq}", {f"v_{axis['key']}": verdict, "reason": "selftest", "evidence": "0"})
-        expect("commit reveals machine after storing", server.UI["role_production"] in revealed)
-
-        # 4. loop closes: /gt shows it, /eval is 0 gold, promote, /eval gains gold
+        # 3. S9: blind GT flows back through the ONE ingestion path. Simulate the
+        #    factcheck export landing in inbox/, then POST /ingest.
+        os.makedirs(inbox, exist_ok=True)
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["unit_key", "axis_key", "verdict", "reason", "evidence",
+                    "reviewer", "provenance", "tier"])
+        w.writerow([unit, axis["key"], verdict, "selftest", "[]", "fc", "blind", "silver"])
+        with open(inbox_file, "w", encoding="utf-8") as fh:
+            fh.write(buf.getvalue())
+        expect("POST /ingest accepts the flow-back", status(base, "/ingest", "POST", b"") == 200)
         gt = get("/gt")
-        expect("/gt lists the committed entry", verdict in gt and "/promote/" in gt)
+        expect("/gt lists the ingested blind entry", verdict in gt and "/promote/" in gt)
+
+        # 4. loop closes: promote the ingested blind -> /eval gold count rises (S6:
+        #    blind -> gold is allowed; the gate lives in store.ALLOWED).
         before = get("/eval")
         pid = gt.split("/promote/", 1)[1].split('"', 1)[0]
-        post(f"/promote/{pid}", {})
+        urllib.request.urlopen(urllib.request.Request(base + f"/promote/{pid}", data=b"", method="POST"))
         after = get("/eval")
-        # gold count renders as the funnel .big value just before its eval_gold label
         gold_before = before.split(server.UI["eval_gold"], 1)[0].rsplit('class="big">', 1)[1].split("</div>", 1)[0]
         gold_after = after.split(server.UI["eval_gold"], 1)[0].rsplit('class="big">', 1)[1].split("</div>", 1)[0]
         expect("loop closes: eval gold count rises after promote",
                int(gold_after) > int(gold_before), f"{gold_before} -> {gold_after}")
     finally:
         httpd.shutdown()
+        if os.path.exists(inbox_file):
+            os.remove(inbox_file)
+        if os.path.isdir(inbox) and not os.listdir(inbox):
+            os.rmdir(inbox)
 
     print()
     if FAILS:
