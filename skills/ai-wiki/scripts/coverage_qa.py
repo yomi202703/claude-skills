@@ -37,6 +37,11 @@ DEFAULT_JUDGE_MODEL = "sonnet"
 # trust — report it as unavailable rather than emit a misleading low score.
 MAX_ERROR_RATIO = 0.5
 
+# QA items judged per LLM call. A whole large set in one call hit the 300s
+# subprocess timeout (every item then wrongly errored); batching keeps each
+# call small enough to finish, and isolates a slow/failed batch to its slice.
+COVERAGE_BATCH_SIZE = 20
+
 
 @dataclass
 class QAItem:
@@ -205,18 +210,14 @@ def _fmt_pct(pct: float | None) -> str:
 # ---------- Coverage check ----------
 
 
-def check_coverage(
+def _judge_one_batch(
     vault: Vault,
     slug: str,
     narrative_body: str,
     qa_items: list[QAItem],
-    judge_model: str = DEFAULT_JUDGE_MODEL,
+    judge_model: str,
 ) -> tuple[list[CoverageStatus], float]:
-    """Ask Claude to judge each QA against the narrative. Returns
-    (statuses_in_input_order, cost). The judge runs on a *different* model from
-    the opus generator (default sonnet) to avoid self-preference bias."""
-    if not qa_items:
-        return [], 0.0
+    """Judge a single batch of QA items in one LLM call (input order preserved)."""
     qa_json = json.dumps([x.to_dict() for x in qa_items], ensure_ascii=False, indent=2)
     result = llm.call_with_template(
         "coverage_qa_check",
@@ -244,6 +245,35 @@ def check_coverage(
         note = str(item.get("note", ""))
         statuses.append(CoverageStatus(q=qa.q, status=status, note=note))
     return statuses, result.cost_usd
+
+
+def check_coverage(
+    vault: Vault,
+    slug: str,
+    narrative_body: str,
+    qa_items: list[QAItem],
+    judge_model: str = DEFAULT_JUDGE_MODEL,
+) -> tuple[list[CoverageStatus], float]:
+    """Ask Claude to judge each QA against the narrative. Returns
+    (statuses_in_input_order, cost). The judge runs on a *different* model from
+    the opus generator (default sonnet) to avoid self-preference bias.
+
+    Judging is split into batches of COVERAGE_BATCH_SIZE: a large QA set in a
+    single call reliably hit the LLM subprocess's 300s timeout (~80 items + body
+    → killed, every item wrongly errored). Batching keeps each call well inside
+    the timeout, and a slow/failed batch only errors its own slice — the rest
+    still measure. Batches run sequentially and are concatenated, preserving
+    input order."""
+    if not qa_items:
+        return [], 0.0
+    statuses: list[CoverageStatus] = []
+    total_cost = 0.0
+    for start in range(0, len(qa_items), COVERAGE_BATCH_SIZE):
+        batch = qa_items[start:start + COVERAGE_BATCH_SIZE]
+        b_statuses, b_cost = _judge_one_batch(vault, slug, narrative_body, batch, judge_model)
+        statuses.extend(b_statuses)
+        total_cost += b_cost
+    return statuses, total_cost
 
 
 # ---------- Gap report ----------

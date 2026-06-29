@@ -113,3 +113,13 @@ Next (separate commit): batch the coverage judge (~20 QA/call) so each call fits
 Tests: +2 ingest (caller-slug inheritance, collision suffix). Full suite 197 passed / 3 skipped.
 
 Status: ingest.py / narrative_draft.py / dispatcher.py + COMMANDS.md/HANDOFF.md committed this session. Coverage-judge batching tracked as the immediate follow.
+
+## 2026-06-30 — coverage judge batched (the timeout cure); first real number on the arxiv tree is 80%
+
+Cure for the 300s timeout diagnosed in the entry above. `check_coverage` now judges QA in batches of `COVERAGE_BATCH_SIZE=20` (single-call body factored into `_judge_one_batch`), run sequentially and concatenated in input order. Each call is small enough to finish well inside the LLM subprocess's 300s limit, and a slow/failed batch errors only its own ≤20-item slice — the rest still measure (the 06-29 error/unavailable plumbing is the per-batch safety net under it).
+
+Live-validated end to end: `coverage-recheck deterministic-control-plane-llm-coding-agents` (the same tree that returned a false 0% on 2026-06-29) now completes — 4 batches, all error=no, no timeout, ~$0.94 — and reports real coverage 80.0% (64 covered / 15 partial / 1 missing / 0 errored). So the tree the original ingest produced was an 80%-coverage good result all along; the timeout-induced false 0% had hidden it. This closes the loop: 06-29 stopped the false 0% from lying, 06-30 lets the measurement actually run.
+
+Tests: +2 (batch splitting → N/BATCH calls concatenated in order; one failed batch errors only its slice while the rest measure). Full suite 199 passed / 3 skipped.
+
+Status: coverage_qa.py + test_coverage_qa.py committed this session. The two deferred items from 06-29 are now both done and the coverage layer is functional on large trees.

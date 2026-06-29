@@ -5,11 +5,13 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest  # noqa: E402
 from coverage_qa import (  # noqa: E402
+    COVERAGE_BATCH_SIZE,
     DEFAULT_JUDGE_MODEL,
     MAX_ERROR_RATIO,
     CoverageStatus,
@@ -246,6 +248,64 @@ def test_run_coverage_judge_outage_reports_unavailable(vault: Vault, monkeypatch
     assert out["coverage_pct"] is None
     assert out["errored"] == 2
     assert out["missing"] == 0
+
+
+# ---------- batching (300s-timeout cure) ----------
+
+
+def _mock_calls(*envelopes):
+    """Per-call mock: a dict envelope returns success; the string "ERR" returns
+    a non-zero exit (a failed/timed-out batch)."""
+    it = iter(envelopes)
+
+    def fake_run(*a, **k):
+        e = next(it)
+        if e == "ERR":
+            return SimpleNamespace(returncode=1, stdout="", stderr="boom")
+        return SimpleNamespace(returncode=0, stdout=json.dumps(e), stderr="")
+    return fake_run
+
+
+def _covered(n: int, cost: float):
+    return {"result": json.dumps([{"status": "covered"} for _ in range(n)]),
+            "is_error": False, "usage": {}, "total_cost_usd": cost}
+
+
+def test_check_coverage_splits_into_batches(vault: Vault, monkeypatch):
+    # > one batch worth of QA must be judged in multiple calls, concatenated in
+    # order — the whole set in a single call is what hit the 300s timeout.
+    n = COVERAGE_BATCH_SIZE + 5  # two batches: full + remainder
+    qa = [QAItem(q=f"Q{i}", a=f"A{i}") for i in range(n)]
+    calls = {"n": 0}
+    base = _mock_calls(_covered(COVERAGE_BATCH_SIZE, 0.05), _covered(5, 0.02))
+
+    def counting(*a, **k):
+        calls["n"] += 1
+        return base(*a, **k)
+    monkeypatch.setattr(subprocess, "run", counting)
+
+    statuses, cost = check_coverage(vault, "s", "body", qa)
+    assert len(statuses) == n
+    assert all(s.status == "covered" for s in statuses)
+    assert calls["n"] == 2                # one call per batch, not one giant call
+    assert cost == pytest.approx(0.07)    # costs summed across batches
+
+
+def test_check_coverage_one_failed_batch_only_errors_its_slice(vault: Vault, monkeypatch):
+    # The cure's payoff: a single slow/failed batch no longer nukes the whole
+    # measurement — only its own items error; the rest still measure.
+    n = COVERAGE_BATCH_SIZE + 5
+    qa = [QAItem(q=f"Q{i}", a=f"A{i}") for i in range(n)]
+    monkeypatch.setattr(subprocess, "run", _mock_calls(_covered(COVERAGE_BATCH_SIZE, 0.05), "ERR"))
+
+    statuses, _ = check_coverage(vault, "s", "body", qa)
+    assert len(statuses) == n
+    assert all(s.status == "covered" for s in statuses[:COVERAGE_BATCH_SIZE])
+    assert all(s.status == "error" for s in statuses[COVERAGE_BATCH_SIZE:])
+    covered, partial, missing, errored = _tally(statuses)
+    assert covered == COVERAGE_BATCH_SIZE and errored == 5
+    pct, unavailable = _coverage_pct(covered, partial, missing, errored)
+    assert unavailable is False and pct == 100.0  # 5/25 errored < MAX_ERROR_RATIO
 
 
 # ---------- write_gap_report ----------
