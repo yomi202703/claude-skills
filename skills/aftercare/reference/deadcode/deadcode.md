@@ -1,9 +1,6 @@
----
-name: deadcode
-description: Detect dead code, verify it, delete it, and confirm with tests — end to end. Trigger on "find dead code", "unused code", "unreferenced", "clean up", "remove unused", "dead functions".
----
+# deadcode pass (reachability)
 
-# deadcode (router)
+Loaded by aftercare for the reachability pass. Detect dead code, verify it, delete it, confirm with tests — end to end.
 
 The user does not read code. The skill completes end to end.
 Never escalate "needs review" items to the user. Never treat tool output as the final verdict.
@@ -37,7 +34,7 @@ Load `LENSES`, `TEST_CMD`, `FRAMEWORK_HOOKS`, `ENTRYPOINTS` from the framework f
 2. Capture the typecheck baseline: run the typechecker now and record the pre-existing error set. The deletion gate (Phase 3a) is "no new errors versus this baseline", not "absolute green" — a repo that already has unrelated typecheck errors must not make every deletion look unsafe.
 3. `git add -A && git commit -m "wip: pre-deadcode-scan snapshot" --allow-empty`
 4. Run all `LENSES` in parallel, union the outputs, dedup by `(file, line, name)`. Each lens has `name` and `safety` (1 = safest, 3 = riskiest). Carry `lens` and `safety` on every finding.
-   - A lens that is `command not found` → AskUserQuestion to run `bash ~/.claude/skills/deadcode/setup.sh --<lang>`. no → `status: aborted_no_tool`.
+   - A lens that is `command not found` → AskUserQuestion to run `bash ~/.claude/skills/aftercare/reference/deadcode/setup.sh --<lang>`. no → `status: aborted_no_tool`.
    - A lens that times out, crashes, or returns malformed/non-JSON output → record `{lens, status: "error", detail}`, drop only that lens's findings, and continue with the others. Never treat a crashed lens as "zero findings = clean".
 
 Output schema: `[{file, line, name, kind, lens, safety}]`.

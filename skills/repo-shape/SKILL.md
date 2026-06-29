@@ -1,6 +1,6 @@
 ---
 name: repo-shape
-description: 散らかった既存リポを安全に AI-native 構造へ寄せ直す(主)＋新規リポに base を最初に敷く(従)スキル。単位非依存層の正準スキーマを単一所有し、ツリーを実際に動かす安全移行手順(branch→git mv→ripple-check→テスト→オーナー diff・可逆)を持つ。正準名は紙で凍結せず初回の実リポ走行で結晶化する。claude-md(メモリ層の中身)と ripple-check(参照追従)へ compose、judge-loop §3.5 の base を単一所有。Triggers — "repo-shape".
+description: 散らかった既存リポを安全に AI-native 構造へ寄せ直す(主)＋新規リポに base を最初に敷く(従)スキル。単位非依存層の正準スキーマを単一所有し、ツリーを実際に動かす安全移行手順(branch→git mv→ripple-check パス→テスト→オーナー diff・可逆)を持つ。正準名は紙で凍結せず初回の実リポ走行で結晶化する。claude-md(メモリ層の中身)と aftercare の ripple-check パス(参照追従)へ compose、judge-loop §3.5 の base を単一所有。
 ---
 
 # repo-shape
@@ -13,7 +13,7 @@ Fix an existing repo's mess by safely moving what is there one reversible step a
 - The owner is the審級. Present every proposed tree and every migration as a diff to ratify before it lands. Never self-approve a move.
 
 ## Two entrances
-- Remedial (primary): a repo with accumulated mess. Classify what is there → propose a target tree → owner ratifies → migrate one category at a time → ripple-check → test → next category.
+- Remedial (primary): a repo with accumulated mess. Classify what is there → propose a target tree → owner ratifies → migrate one category at a time → ripple-check pass → test → next category.
 - Preventive: an empty or day-0 repo. Lay the universal layer directly, no migration. Reserve unit-dependent slots empty.
 
 ## The universal layer (what repo-shape single-owns)
@@ -30,6 +30,7 @@ Treat these canonical names as the default the first real run confirms or adjust
 - source layer — the repo's actual logic (`src/`, `scripts/`, or module dirs); name varies. Generated artifacts never co-mingle with it.
 - `tests/`
 - governance dir (`成果物/` or `docs/`) holding `STATUS.md` / `TODO.md` / `decisions/` / `archive/`; structure owned by claude-md.
+- the human-facing view layer — `.lavish/` holds the regenerated flow/logic HTML views; `narrative/` holds the repo-local 5th role (durable, frozen, append-only flow). repo-shape reserves and firewall-classifies the slots; throughline owns the view content, claude-md the governance-doc content. `narrative/` is append-only evidence — versioned, never overwrite, never gitignore. `.lavish/` views are regenerable but committed not gitignored, an intentional exception to the regenerable-is-gitignored default because the view is a durable human surface, not disposable output.
 
 Reserve but defer (unit-dependent): `outputs/<unit>/` and any serving/delivery/carve-out dirs — reserve the name, leave the internal shape until the unit settles.
 
@@ -39,14 +40,15 @@ Do not place these (judgment-specific — judge-loop owns them): `contract/` `fa
 Per category, in order, never skipping:
 1. Confirm clean tree, on a dedicated branch (not the default). One category per step.
 2. `git mv` the files — preserves history, reversible. Never delete-and-recreate.
-3. ripple-check the moved paths: imports, config, scripts, test fixtures, docs, names, persisted paths must all follow. Hand the moved set to ripple-check; do not reimplement it.
+3. Run the ripple-check pass over the moved paths: imports, config, scripts, test fixtures, docs, names, persisted paths must all follow. Hand the moved set to the ripple-check pass (aftercare/reference/ripple-check.md); do not reimplement it.
 4. Run the repo's own tests / type-check. Green before the next category.
 5. Present the diff; land only on ratify. Any step red → revert the branch.
 
 ## Crystallize names by running, not on paper
-The discipline (firewall, early-fix / defer-settle, safe-move steps) is repo-independent and solid; the specific canonical names are n=1 and provisional. Run the minimal cycle on a real repo (classify → propose → ratify → migrate one category → ripple-check → test pass) and let the names settle against a real tree before treating any as canonical. Do not present the name set as fixed before that run.
+The discipline (firewall, early-fix / defer-settle, safe-move steps) is repo-independent and solid; the specific canonical names are n=1 and provisional. Run the minimal cycle on a real repo (classify → propose → ratify → migrate one category → ripple-check pass → test pass) and let the names settle against a real tree before treating any as canonical. Do not present the name set as fixed before that run.
 
 ## Composition
 - claude-md — owns memory-layer content (CLAUDE.md, four-role governance, directory map) and secret discipline. repo-shape owns the tree-shape schema and calls claude-md for that content. Do not duplicate either single source.
-- ripple-check — owns reference-following after each move; never reimplement it.
+- the ripple-check pass (aftercare/reference/ripple-check.md) — owns reference-following after each move; never reimplement it.
 - judge-loop — composes repo-shape as its Scaffold base (§3.5) and adds only the judgment-specific delta. repo-shape stands alone for any repo, judgment or not.
+- throughline — owns the human-facing view artifacts (`.lavish/` flow/logic, `narrative/` frozen flow). repo-shape reserves their slots and fixes their firewall class; it never authors the views, and throughline defers slot placement back here.

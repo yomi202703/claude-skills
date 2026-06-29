@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# deadcode skill — toolchain setup
+# deadcode pass (aftercare) — toolchain setup
 # Idempotent: re-running skips anything already installed.
-# Usage: bash ~/.claude/skills/deadcode/setup.sh [--all | --js | --python | --ast-grep]
+# Usage: bash ~/.claude/skills/aftercare/reference/deadcode/setup.sh [--all | --js | --python | --ast-grep]
 
 set -euo pipefail
 
