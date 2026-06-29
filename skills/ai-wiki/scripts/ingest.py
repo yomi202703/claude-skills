@@ -121,27 +121,47 @@ def stage1_arxiv(vault: Vault, arxiv_id: str, ingested_from: str = "manual") -> 
     return page
 
 
-def stage1_md_path(vault: Vault, path: str, ingested_from: str = "manual") -> Page:
-    """Save a local .md file as a source page."""
+def stage1_md_path(
+    vault: Vault,
+    path: str,
+    ingested_from: str = "manual",
+    *,
+    slug: str | None = None,
+    title: str | None = None,
+) -> Page:
+    """Save a local .md file as a source page.
+
+    ``slug`` lets a caller tie the source to a known identity (e.g. the narrative
+    slug it is being drafted into) instead of the default ``note-<date>-<stem>``,
+    which derives from the on-disk filename and is meaningless when the input is
+    a temp file. When omitted, the legacy filename-derived slug is used.
+    """
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(path)
     content = p.read_text(encoding="utf-8")
-    slug = f"note-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}-{slugify(p.stem)}"
+    if slug:
+        base = slugify(slug)
+    else:
+        base = f"note-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}-{slugify(p.stem)}"
+    slug = base
     if vault.exists("source", slug):
-        slug = f"{slug}-{int(datetime.now(timezone.utc).timestamp())}"
+        slug = f"{base}-{int(datetime.now(timezone.utc).timestamp())}"
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    meta = {
+        "type": "source",
+        "slug": slug,
+        "source_kind": "note_md",
+        "original_path": str(p),
+        "ingested_at": now,
+        "ingested_from": ingested_from,
+    }
+    if title:
+        meta["title"] = title
     page = Page(
         kind="source",
         slug=slug,
-        meta={
-            "type": "source",
-            "slug": slug,
-            "source_kind": "note_md",
-            "original_path": str(p),
-            "ingested_at": now,
-            "ingested_from": ingested_from,
-        },
+        meta=meta,
         body=content,
     )
     vault.write(page)
@@ -206,15 +226,24 @@ def find_existing_md_source(vault: Vault, path: str | Path) -> str | None:
     return None
 
 
-def ingest_md_if_new(vault: Vault, path: str | Path, *, ingested_from: str = "manual") -> dict:
+def ingest_md_if_new(
+    vault: Vault,
+    path: str | Path,
+    *,
+    ingested_from: str = "manual",
+    slug: str | None = None,
+    title: str | None = None,
+) -> dict:
     """Idempotently store a local ``.md`` into ``sources/``.
 
     Returns ``{"slug": <slug>, "reused": bool}``. If a source page already
     records the same ``original_path``, no new page is written and the existing
-    slug is returned with ``reused=True``.
+    slug is returned with ``reused=True``. ``slug``/``title`` are forwarded to
+    :func:`stage1_md_path` for first-time ingests so the source can inherit the
+    caller's identity instead of a filename-derived ``note-<date>-<stem>`` slug.
     """
     existing = find_existing_md_source(vault, path)
     if existing is not None:
         return {"slug": existing, "reused": True}
-    page = stage1_md_path(vault, str(path), ingested_from=ingested_from)
+    page = stage1_md_path(vault, str(path), ingested_from=ingested_from, slug=slug, title=title)
     return {"slug": page.slug, "reused": False}

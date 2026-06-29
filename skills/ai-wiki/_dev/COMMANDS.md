@@ -19,8 +19,8 @@ Rank `[[slug]]` targets by backlink density across narratives. Originally meant 
 ## `narrative-split <slug> --section <H2>`
 Split a bloating narrative into a sibling tree at the named H2 boundary. Use when a narrative grows beyond comfortable single-spine reading.
 
-## `coverage-narrative <slug> --source <md>`
-QuestEval-style gap report against a source markdown. Auto-runs inside `narrative-draft`; standalone invocation only needed when re-checking an already-drafted narrative against a revised source.
+## `coverage-recheck <slug> [--source <md>] [--judge-model M]` (alias: `coverage-narrative`)
+Measure-only QuestEval-style coverage pass: judges the cached QA set against the committed narrative and writes the gap report. Never mutates the tree and runs no remediation loop. The iterating form auto-runs inside `narrative-draft`; standalone invocation is the re-measure to call after a judge-model outage left coverage `unavailable` (coverage_pct=None), or to re-check against a revised source. `--source` is only needed if no QA set is cached yet.
 
 ## `pipeline [--arxiv arxiv:X ...]`
 Convenience wrapper: ingest (optional) → lint → narratives. Returns `stages`, `stages_run`, `stages_ok`, `fatal_error`. Useful for batch automation but unused in interactive practice.

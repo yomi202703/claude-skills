@@ -97,3 +97,19 @@ Tests: +6 (denominator-excludes-errors, no-error==legacy-ratio, all/majority-err
 Deferred (recorded, not done this session): source-slug inheritance — narrative-draft ingested the source as `note-2026-06-29-paper` (from the temp filename) rather than the `--slug`/`--title`. P2; trigger [next time source provenance matters]. Re-running coverage alone still requires a full narrative-draft regeneration (no standalone `coverage-recheck <slug>` entry point); the `error`/`unavailable` plumbing added here is the precondition for such a command if it is ever wanted.
 
 Status: coverage_qa.py / faithfulness.py / narrative_draft.py committed this session with tests. The original arxiv run's committed tree is unaffected (faithfulness/coverage are diagnostic, never mutate the tree); only the QA *reporting* was wrong, and only on judge-outage runs.
+
+## 2026-06-30 — source-slug inheritance + standalone coverage re-measure; coverage-judge timeout is the real failure mode
+
+Picked up the two items the 2026-06-29 judge-failure entry deferred. Both done.
+
+Source-slug inheritance: `narrative-draft` archived its source under `note-<date>-<stem>`, derived from the on-disk filename — meaningless when the input is a temp file (the arxiv run landed as `note-2026-06-29-paper`). `stage1_md_path`/`ingest_md_if_new` gained optional `slug`/`title`; narrative-draft now passes `slug=f"src-{base_slug}"` so the source is tied to the tree it feeds (e.g. `src-deterministic-control-plane-llm-coding-agents`). The `ingest` command path passes no slug → legacy `note-<date>-<stem>` preserved (test_v5_core fixes this). `title` harmonises note_md sources with arxiv sources, which already carry it. Idempotency unchanged (match is on `original_path`, not slug).
+
+Coverage re-measure entry point: the prior note claimed there was none. Inaccurate — `dispatcher.py coverage-narrative <slug>` already ran `run_coverage` (measure-only, no remediation loop). Rather than build a duplicate, registered `coverage-recheck` as the canonical name pointing at the same handler, kept `coverage-narrative` as a back-compat alias, and added `--judge-model`. _dev/COMMANDS.md + HANDOFF.md synced (ripple-check); CHANGELOG and the 06-29 deferred note left as append-only history — this entry is the correction of record.
+
+Real root cause found (separate from the plumbing fix): the 06-29 "judge API failed, in=0/out=0" was NOT a transient outage. A live `coverage-recheck` reproduced it deterministically; a minimal sonnet call succeeds (cost 0.039) but the real `coverage_qa_check` payload (80 QA items + ~11k-char body in ONE call) returns `subprocess timeout after 300s` — usage is zero because the subprocess is killed before returning. So the QA judge does not scale to large trees in a single call. The judge-failure plumbing committed 06-29 handled this correctly (reported `unavailable`/`coverage_pct=None` + an UNMEASURED banner rather than a false 0%) — which is exactly the value of that fix — but it masks rather than cures the timeout.
+
+Next (separate commit): batch the coverage judge (~20 QA/call) so each call fits well inside the 300s timeout and a single slow/failed batch errors only its own slice (the rest still measure). This is the cure; the 06-29 plumbing is the safety net under it.
+
+Tests: +2 ingest (caller-slug inheritance, collision suffix). Full suite 197 passed / 3 skipped.
+
+Status: ingest.py / narrative_draft.py / dispatcher.py + COMMANDS.md/HANDOFF.md committed this session. Coverage-judge batching tracked as the immediate follow.

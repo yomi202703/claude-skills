@@ -1272,7 +1272,13 @@ def narrative_draft(
     # least one tree was actually committed.
     if ingest_source and report.narratives_written:
         try:
-            ing = ingest_mod.ingest_md_if_new(vault, path, ingested_from="narrative-draft")
+            # Tie the archived source to the narrative's identity (base_slug),
+            # not the temp filename — otherwise a draft from /tmp/paper.md lands
+            # under a meaningless `note-<date>-paper` source slug.
+            ing = ingest_mod.ingest_md_if_new(
+                vault, path, ingested_from="narrative-draft",
+                slug=f"src-{base_slug}", title=title,
+            )
             report.source_ingested = ing
         except Exception as e:  # never let source archival fail the draft
             report.source_ingested = {"error": str(e)}

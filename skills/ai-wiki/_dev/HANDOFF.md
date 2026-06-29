@@ -41,7 +41,7 @@
 | `narratives` | forest 検証 + _index.md 再生成 |
 | `narrative-draft <md>` | source md → narrative tree |
 | `narrative-split <slug> --section <H2>` | narrative の 1 章を別 tree に切出 |
-| `coverage-narrative <slug>` | QuestEval gap report |
+| `coverage-recheck <slug>` (alias `coverage-narrative`) | measure-only QuestEval coverage re-run (no tree edit) |
 | `pipeline [--arxiv X]` | ingest → lint → narratives の 3 stage |
 
 ### テスト状態
@@ -77,7 +77,7 @@ Claude Code 側で新規作業はなく、**user の study 中に違和感が湧
 | 自動 enrich | `dispatcher.py enrich --execute` | shell concept を Claude CLI で自動 edge/body 生成、CoVe、commit |
 | narrative 自動生成 | `dispatcher.py narrative-draft <md>` | md → size 適応 (single/chunked/hierarchical) → CoVe → QuestEval coverage → commit |
 | pipeline | `dispatcher.py pipeline` | 5 stages (ingest→enrich→project→lint→narratives) chain 実行 |
-| coverage gap report | `dispatcher.py coverage-narrative <slug> --source <md>` | QuestEval 型で narrative の情報漏れを QA 判定 |
+| coverage gap report | `dispatcher.py coverage-recheck <slug> [--source <md>]` (alias coverage-narrative) | QuestEval 型で narrative の情報漏れを QA 判定 (measure-only) |
 
 ### 絶対原則 (user 2026-04-23 指示)
 

@@ -12,7 +12,7 @@ Commands (v5):
     narratives                   — validate narratives/, regenerate forest index
     narrative-draft <source.md>  — source md → narrative tree
     narrative-split <slug> --section <H2> — split a bloating narrative
-    coverage-narrative <slug>    — QuestEval gap report
+    coverage-recheck <slug>      — measure-only QuestEval coverage re-run (no tree edit; alias: coverage-narrative)
     pipeline                     — ingest → lint → narratives (v5)
     card-draft <slug> [--model <m>] — symbol-walk the tree → exhaustive atomic Q-A deck
     card-add --slug <s> --front <q> --back <a> — append one card by hand (rare)
@@ -115,12 +115,19 @@ def cmd_narratives(argv: list[str]) -> dict:
 
 
 def cmd_coverage_narrative(argv: list[str]) -> dict:
-    p = argparse.ArgumentParser(prog="dispatcher.py coverage-narrative")
+    # Measure-only coverage pass over an already-committed tree: judge the cached
+    # QA set against the narrative and write the gap report. Never mutates the
+    # tree and runs no remediation loop — this is the standalone re-measure to
+    # call after a judge-model outage produced an `unavailable` result, without
+    # regenerating the whole tree. Aliased as `coverage-recheck`.
+    p = argparse.ArgumentParser(prog="dispatcher.py coverage-recheck")
     p.add_argument("slug", help="narrative slug to evaluate")
     p.add_argument("--source", default=None,
-                   help="path to original md source (required on first run)")
+                   help="path to original md source (required only if no QA set is cached yet)")
     p.add_argument("--regenerate-qa", action="store_true",
                    help="force regeneration of QA set even if cached")
+    p.add_argument("--judge-model", default=mod_coverage_qa.DEFAULT_JUDGE_MODEL,
+                   help="model that judges coverage (default sonnet)")
     p.add_argument("--vault", default=None)
     args = p.parse_args(argv)
     vault = Vault(root=args.vault) if args.vault else Vault()
@@ -129,6 +136,7 @@ def cmd_coverage_narrative(argv: list[str]) -> dict:
         slug=args.slug,
         source_path=args.source,
         regenerate_qa=args.regenerate_qa,
+        judge_model=args.judge_model,
     )
 
 
@@ -369,7 +377,8 @@ COMMANDS = {
     "narrative-draft": cmd_narrative_draft,
     "narrative-split": cmd_narrative_split,
     "pipeline": cmd_pipeline,
-    "coverage-narrative": cmd_coverage_narrative,
+    "coverage-recheck": cmd_coverage_narrative,
+    "coverage-narrative": cmd_coverage_narrative,  # back-compat alias
 }
 
 
