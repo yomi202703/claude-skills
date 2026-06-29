@@ -1,55 +1,56 @@
 # ripple-check pass (forward consistency)
 
-aftercare がこのパスを読み込む。repo-shape も git mv 後の参照追従にこのパスを使う。ロジック変更後の整合性精査＋冗長整理。
+Loaded by aftercare, and by repo-shape for reference-following after a git mv. After a logic change, check that everything depending on the changed premises follows, and simplify what the change made redundant.
 
-## 原則
+## Principles
 
-- R1. 意図の一次ソースは会話文脈、変更面の一次ソースは diff。両方取り突き合わせる。片方だけ／憶測で前提を確定しない。
-- R2. ツール出力は候補。最終判断は自分の grep ＋ コード読み。grep 一行で結論しない。
-- R3. 修正は「確信」をゲートにする。追従の正解が一意に決まるものだけ直す。意味が変わりうる／意図次第で割れるものは直さず提示。これが黙って意味を変える事故を防ぐ唯一のゲート。
-- R4. 「不整合ゼロ」は「不整合無し」ではない。特に重複ロジックは参照辿りで出ない。
-- R5. 直した全件を file:line ＋ 追従元 ＋ 根拠付きで報告に残す(全部修正を可逆・監査可能にする)。
+- R1. The primary source of intent is the conversation; the primary source of the change surface is the diff. Cross-check both. Never fix a premise from one side alone or from a guess.
+- R2. Tool output is a candidate. The final call is your own grep plus reading the code. Never conclude from a single grep line.
+- R3. Gate every fix on certainty. Fix only where the way to follow is uniquely determined. Anything whose meaning could change, or that splits on intent, is presented, not fixed — this is the one gate that prevents silently changing behavior.
+- R4. "Zero inconsistencies found" is not "no inconsistencies exist". Duplicated logic in particular does not surface by following references.
+- R5. Record every fix with file:line, the premise it followed, and the rationale, so all fixes stay reversible and auditable.
 
-## Phase 0 — スコープ確定
+## Phase 0 — Scope
 
-会話から今回の変更の「狙い・決定・スコープ外と明言したこと・戻したこと」を拾う(=意図)。`git diff`(必要ならコミット済み分も)を見る(=変更行)。文脈が圧縮/コールドで意図が辿れなければ diff 単独で進み、その旨明記。diff も意図も無ければスコープを尋ねて止まる。
+The caller hands the change surface (aftercare: the derived git scope; repo-shape: the git-mv'd set). Take that as the changed lines. Pull intent from the conversation (goal, decisions, what was declared out of scope, what was reverted). Cross-check both. If intent is compressed or cold and cannot be traced, proceed on the handed change surface alone and say so. If neither a handed surface nor intent exists, ask for scope and stop.
 
-## Phase 1 — 変わった前提(delta)抽出
+## Phase 1 — Extract changed premises (deltas)
 
-変更行から「値の意味」の変化を列挙。`D1, D2…` で採番、`<何がどう変わったか> @ file:line（狙い）`。
-観点: 戻り値(範囲/意味/型/null/単位) / 引数(増減・順序・意味・既定) / 副作用(書込先・発火・順序) / 例外(条件・型・握り潰し) / 不変条件 / データ形(スキーマ・enum・定数) / 分岐条件(しきい値・境界)。
+List how the meaning of values changed, from the changed lines. Number them `D1, D2…` as `<what changed how> @ file:line (goal)`.
+Angles: return value (range / meaning / type / null / unit) / arguments (count, order, meaning, defaults) / side effects (write target, firing, order) / exceptions (condition, type, swallowing) / invariants / data shape (schema, enum, constants) / branch conditions (thresholds, boundaries).
 
-意図と diff の食い違いも検査: diff にあり意図に無い=意図外の変更(事故疑い)、意図にあり diff に無い=未反映(やり忘れ)。どちらも Phase 4 で提示。
-delta が無い(整形のみ等)なら報告して終了。
+Also check intent-vs-diff mismatch: in the diff but not the intent = unintended change (suspected accident); in the intent but not the diff = not applied (forgotten). Present both in Phase 4.
+If there is no delta (formatting-only, etc.), report and stop.
 
-## Phase 2 — 依存箇所探索(delta ごと)
+## Phase 2 — Find dependents (per delta)
 
-symbol 参照を辿るだけでは足りない。各 delta について次を回し、ヒットは開いて読む:
+Following symbol references is not enough. For each delta, run the following and open every hit to read it:
 
-- 呼び出し側: 全 call site が新シグネチャ・新戻り値を正しく扱うか。
-- 並行・重複ロジック(最重要・最も見落とす): 同じ計算/定数/判定を別所で独立に書いた箇所。symbol を参照しないので値・式・境界そのものを検索し、対になる処理を読む。「片方だけ直した」を狙う。
-- テスト: 旧挙動を固定したテスト(偽green/赤)、新挙動の未カバー。
-- 型・スキーマ・契約 / doc・コメント / 命名 / 永続化・移行・キャッシュ / 設定・定数・flag。
+- Call sites: does every call site handle the new signature and new return value correctly.
+- Parallel / duplicated logic (the most easily missed): the same computation, constant, or decision written independently elsewhere. It does not reference the symbol, so search for the value, expression, or boundary itself and read the paired logic. Hunt for "fixed only one side".
+- Tests: tests that pin the old behavior (false green / red), and new behavior left uncovered.
+- Types / schemas / contracts / docs / comments / naming / persistence / migration / cache / config / constants / flags.
 
-`<delta ID> → file:line / 内容` で集める。
+Collect as `<delta ID> → file:line / content`.
 
-## Phase 2b — 冗長検出(変更が残したもの)
+## Phase 2b — Redundancy the change left
 
-変更で不要・重複になった箇所を拾う。スコープは変更行とその近傍に限る(全域の dead code 掃除は deadcode パス reference/deadcode/deadcode.md に委ねる)。
+Pick up what the change made unnecessary or duplicated. Scope to the changed lines and their neighborhood (whole-repo dead-code sweeping is delegated to the deadcode pass, reference/deadcode/deadcode.md).
 
-- 旧経路の残骸: 新ロジックに置き換わり到達しなくなった旧コード・分岐。
-- 死に分岐: delta により常に真/偽になった条件、潰れた case。
-- 不要化: 使われなくなった引数・変数・ヘルパー・import・フラグ。
-- 重複の発生: 既存ロジックと同じものを変更が新たに書いた箇所(Phase 2 の重複と表裏、こちらは「片方を消して寄せる」)。
-- 過剰防御: 不変条件が変わって無意味になった重複ガード・チェック。
+- Old-path residue: old code or branches the new logic replaced and no longer reaches.
+- Dead branches: conditions a delta made always-true/false, collapsed cases.
+- No-longer-needed: arguments, variables, helpers, imports, flags that fell out of use.
+- New duplication: where the change wrote logic identical to something existing (the flip side of Phase 2's duplication — here you delete one side and converge).
+- Over-guarding: duplicate guards or checks made meaningless by a changed invariant.
 
-`R<n> → file:line / 何が冗長か / 提案(削除・統合・簡素化)` で集める。
+Collect as `R<n> → file:line / what is redundant / proposal (delete, merge, simplify)`.
 
-## Phase 3 — 分類と修正
+## Phase 3 — Classify and fix
 
-- 追従済み: 既に整合。不要。
-- 確信あり: 追従の仕方が一意(シグネチャ追従、旧前提の doc 更新、対の重複を同値に揃える等、新旧の不整合)。→ 直す。
+- Already following: consistent; nothing to do.
+- Certain: the way to follow is unique (follow a signature, update a doc stating the old premise, align a paired duplicate to equivalence — a new-vs-old inconsistency). Fix it.
+- Otherwise: present, do not fix (R3).
 
-## Phase 4 — 検証&報告
+## Phase 4 — Verify and report
 
-テスト/型チェックがあれば修正後に実行。
+If tests / typecheck exist, run them after fixing. Report every fix per R5, plus the intent-vs-diff mismatches from Phase 1.

@@ -1,15 +1,12 @@
 # deadcode pass (reachability)
 
-Loaded by aftercare for the reachability pass. Detect dead code, verify it, delete it, confirm with tests — end to end.
-
-The user does not read code. The skill completes end to end.
-Never escalate "needs review" items to the user. Never treat tool output as the final verdict.
+Loaded by aftercare for the reachability pass — either a repo-wide scan, or the candidate orphans the router hands in for Phase C mop-up; reference resolution is always repo-wide. Detect dead code, verify it, delete it, confirm with tests — end to end. Never escalate "needs review" items; never treat tool output as the final verdict.
 
 ## Rules
 
 R1. Passing tests is the minimum gate for deletion — necessary, not sufficient.
 R2. Make a safety commit before any deletion.
-R3. Tool output is a candidate list. Final judgment is by the skill's own grep + code reading.
+R3. Tool output is a candidate list. Final judgment is by your own grep + code reading.
 R4. "Zero dead reports" does not mean "no dead code exists".
 R5. Test-green ≠ safe. Dead code can revive through feature flags, config, serialization, or reflection, none of which a passing suite exercises. `safety: 3` candidates (functions / methods / classes) are not deleted on the test gate alone — they pass through the Phase 2.5 runtime-evidence gate first; where runtime evidence is unobtainable they are deferred, not deleted.
 R6. Dynamic-dispatch indicators in a file — `getattr` / `setattr`, `importlib` / `__import__`, `__getattr__` / `__getattribute__`, `eval` / `exec`, or other reflection — make every finding in that file low-confidence. Low-confidence findings are excluded from auto-delete and routed to Phase 2.5.
@@ -117,4 +114,4 @@ revert_cmd: "git reset --hard <safety_commit>"
 
 `status` reflects the run as a whole, and `deferred_needs_runtime_evidence` is independent of it: a deferred list may be non-empty under any status. Use `completed` whenever the pipeline finished and ≥1 deletion landed (even if some candidates were deferred). Use `no_runtime_evidence` only when nothing was deleted because every candidate that reached the deletion stage was a safety:3 / low_confidence one that had to be deferred. The deferred list is reported in every case so it is never silently dropped.
 
-`limitations` must always state what this skill structurally cannot see, so a clean report is not misread as proof of no dead code: cross-language reachability (e.g. a Python symbol called only from TS/JS, or via an API/RPC boundary), dead CSS / unused static assets, code behind permanently-off (or permanently-on) feature flags, and any call made through reflection. None of these are detected here.
+`limitations` must always state what this pass structurally cannot see, so a clean report is not misread as proof of no dead code: cross-language reachability (e.g. a Python symbol called only from TS/JS, or via an API/RPC boundary), dead CSS / unused static assets, code behind permanently-off (or permanently-on) feature flags, and any call made through reflection. None of these are detected here.

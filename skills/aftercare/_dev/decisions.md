@@ -73,8 +73,25 @@ The blocker surfaced during the fold: a dependency chain repo-shape → ripple-c
 
 Follow-on reference fixes: setup.sh self-path (deadcode.md + setup.sh header), WINDOWS.md note (deadcode → aftercare deadcode pass + new setup.sh path), aftercare SKILL.md (Phase A/C/D now name the passes by reference path, not "invoke the skill"), and aftercare's description absorbed the old deadcode/ripple-check triggers so those intents still route here. Left untouched: the `deadcode` Python-tool references in reference/deadcode/frameworks/python.md (a CLI lens, not the skill), and other skills' append-only _dev ledgers (historical).
 
+### Decision 8 — reframed as the pre-commit ritual; git is the universal entry; router thinned to reference-only passes
+
+User's reframe: aftercare is the cue you run when about to commit a chunk of work, and whichever passes are selected, all enter from git. So git is the one entry — the router derives the staged + working diff once and hands that scope to each selected pass; the passes do not each re-derive "what changed". description and "What this runs" now say pre-commit ritual / git entry; "Every run" step 1 derives scope from git, step 3 hands it down.
+
+"aftercare is a router, keep it minimal": the supersession track (the heaviest block, previously inline in SKILL.md) moved to reference/supersession.md, so all three passes are now symmetric reference procedures and SKILL.md is a thin router (seed-from-git, multi-select, phase routing, feedback pass, gates, ledger rule, report). On-demand bonus: selecting only reachability no longer loads the supersession body. Router gates trimmed to the universal three (safety commit, tool-output-is-candidate, confidence) plus one cross-cutting governance gate that points at the mask in supersession.md; the four-way classification and full governance mask live with the supersession pass that defines them.
+
+Not done (deliberately): aftercare is described as the pre-commit ritual but is not wired as an automated git pre-commit hook — the user said 合図/cue, invoked deliberately. Wire a hook only if asked.
+
+### Decision 9 — first dogfood run, and skill-shape of the three reference passes
+
+First real run: invoked aftercare on its own authoring session before committing, all three passes selected. It worked end to end — derived scope from git, ran the multi-select, and found one genuine follow-through: SKILL.md Phase A still called the moved track "the supersession track" (inline-era wording) when it is now a pass; rewrote to "pass". It correctly preserved append-only history (the decisions "previously inline" record was kept, not flagged as residue) and applied the ledger rule (the mechanical rewrite went to the run report, not here). No safety commit was needed (no deletions, one rewrite).
+
+Observation: the deadcode/reachability pass is near a no-op in a markdown/skills repo — no code graph, no test suite for it to gate on. That is expected; reachability is for code repos. Recorded in deadcode.md's opening line (it runs repo-wide or on a handed candidate set).
+
+Then ran skill-shape over the three reference passes so they read as executor procedures, not former standalone skills: deadcode.md lost its README voice ("the user does not read code") and its "the skill" self-references, and gained the handed-candidate-set note; ripple-check.md was translated to English (the other two were already English) and its Phase 0 reframed from self-deriving scope to receiving it from the caller (aftercare's git scope / repo-shape's moved set); supersession.md was already in skill-shape voice. All three now uniform: English, forward-imperative, scope-from-caller. That uniformity is itself the Decision-8 follow-through — the router centralizes the git entry, so each pass now declares it receives scope rather than re-deriving it.
+
 ### Open
 
 - Name `aftercare` is provisional but adopted; rename touches only the directory name + frontmatter name.
-- Phase B lenses are inline in SKILL.md; split to reference/ only if they grow language-specific.
-- repo-shape now depends on aftercare/reference/ripple-check.md; if aftercare is ever renamed, that path moves too.
+- repo-shape depends on aftercare/reference/ripple-check.md; if aftercare is ever renamed, that path moves too.
+- A repo linter trims the description's `Triggers —` list; keep the most load-bearing trigger keywords first.
+- ripple-check Phase 2b (change-neighborhood redundancy) overlaps the supersession pass (residue); kept both since 2b is scoped to the change and runs inside the consistency pass. Revisit if the overlap causes double-handling.
