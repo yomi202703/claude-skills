@@ -123,3 +123,19 @@ Live-validated end to end: `coverage-recheck deterministic-control-plane-llm-cod
 Tests: +2 (batch splitting → N/BATCH calls concatenated in order; one failed batch errors only its slice while the rest measure). Full suite 199 passed / 3 skipped.
 
 Status: coverage_qa.py + test_coverage_qa.py committed this session. The two deferred items from 06-29 are now both done and the coverage layer is functional on large trees.
+
+## 2026-06-30 — faithfulness judge batched too (the twin ripple-check found); arxiv tree is 100% fact precision
+
+ripple-check after the coverage batching flagged the parallel-logic twin: `faithfulness.judge_claims` (all claims in one call) and `judge_soundness` (all edges in one call) had the identical 300s-timeout bug — and the log proved it was firing, not hypothetical (`op=narrative_faithfulness` failed with in=0/out=0 on both the arxiv and 計量経済学 trees on 06-29, which is why fact precision kept coming back N/A). "Fixed coverage, left the twin" is exactly the half-fix ripple-check exists to catch.
+
+Applied the same cure: both judges now run in batches of FAITHFULNESS_BATCH_SIZE=20 (single-call bodies factored into `_judge_claims_batch` / `_judge_soundness_batch`), sequential, concatenated in input order.
+
+Per-batch failure semantics (claims): added `ClaimVerdict.errored`. A failed claim batch marks its claims errored (unevaluated), excluded from supported/unsupported/source_silent and the precision denominator — so a failed batch can neither inflate precision to a false 100% nor deflate it. `run()` reports `judge_failed` (precision N/A) only when evaluated==0 or errored/total > FAITHFULNESS_MAX_ERROR_RATIO (0.5); a minority of failed batches still yields a real partial precision over the evaluated claims, plus an `errored` count.
+
+One non-obvious design call: soundness selection keeps errored edges in scope (they carry a source_silent placeholder). Reason — soundness is an INDEPENDENT, smaller-payload call that survived the claim-judge timeout on 06-29 (gave 19/20 while precision was N/A). Excluding errored edges from soundness would let a claim-judge failure also suppress soundness, throwing away the one signal that survives. annotate_inferred, by contrast, DOES exclude errored (it mutates the tree with `[~]` "model-inferred" provenance we don't actually have for an unevaluated edge — conservative on persistent writes, permissive on read-only diagnostics).
+
+Live-validated: faithfulness on the arxiv tree (the same `narrative_faithfulness` op that died with in=0/out=0 on 06-29) now completes — 3 claim batches (43 → 20+20+3, all error=no) + soundness — and reports fact precision 100.0% (34 supported / 0 unsupported / 9 source_silent), soundness 5 sound / 1 dubious / 0 unsound, ~$1.54. So the tree is a genuinely faithful 100%-precision result; the timeout had hidden it behind a false N/A, exactly as it hid coverage behind a false 0%.
+
+Tests: +3 (claim batch splitting; one failed batch errors only its slice; run() minority-failure → partial precision not N/A/100%). Full suite 202 passed / 3 skipped.
+
+Status: faithfulness.py + test_faithfulness.py committed this session. With coverage (06-30 earlier) and faithfulness now both batched, the whole QA layer scales to large trees; the 06-29 plumbing remains the per-batch safety net.

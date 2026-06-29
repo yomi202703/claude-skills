@@ -114,7 +114,76 @@ def test_judge_claims_failure_defaults_to_source_silent(vault, monkeypatch):
     out, _, judge_ok = faithfulness.judge_claims(vault, "s", claims, "src")
     # On judge failure, nothing is claimed 'supported' and judge_ok flags the outage
     assert all(c.verdict == "source_silent" for c in out)
+    assert all(c.errored for c in out)
     assert judge_ok is False
+
+
+# ---------- judge_claims batching (300s-timeout cure) ----------
+
+
+def _fact_claims(n: int):
+    return [faithfulness.ClaimVerdict(claim=f"claim {i}", kind="fact", symbol="?",
+                                      section="ROOT", verdict="source_silent") for i in range(n)]
+
+
+def _verdicts_env(n: int, verdict: str = "supported", cost: float = 0.05):
+    return {"result": json.dumps([{"verdict": verdict, "evidence": "e"} for _ in range(n)]),
+            "is_error": False, "usage": {}, "total_cost_usd": cost}
+
+
+def test_judge_claims_splits_into_batches(vault, monkeypatch):
+    # A large claim set judged in one call is what hit the 300s timeout; it must
+    # now be split across calls, concatenated in order.
+    bs = faithfulness.FAITHFULNESS_BATCH_SIZE
+    claims = _fact_claims(bs + 5)
+    calls = {"n": 0}
+    base = _mock_llm_sequence(_verdicts_env(bs, "supported", 0.05), _verdicts_env(5, "supported", 0.02))
+
+    def counting(*a, **k):
+        calls["n"] += 1
+        return base(*a, **k)
+    monkeypatch.setattr(subprocess, "run", counting)
+
+    out, cost, judge_ok = faithfulness.judge_claims(vault, "s", claims, "src")
+    assert len(out) == bs + 5
+    assert all(c.verdict == "supported" and not c.errored for c in out)
+    assert calls["n"] == 2
+    assert judge_ok is True
+    assert cost == pytest.approx(0.07)
+
+
+def test_judge_claims_one_failed_batch_errors_only_its_slice(vault, monkeypatch):
+    # A slow/failed batch errors only its own claims; the rest still get verdicts.
+    bs = faithfulness.FAITHFULNESS_BATCH_SIZE
+    claims = _fact_claims(bs + 5)
+    bad = {"result": "not json", "is_error": False, "usage": {}, "total_cost_usd": 0.01}
+    monkeypatch.setattr(subprocess, "run", _mock_llm_sequence(_verdicts_env(bs, "supported", 0.05), bad))
+
+    out, _, judge_ok = faithfulness.judge_claims(vault, "s", claims, "src")
+    assert all(c.verdict == "supported" and not c.errored for c in out[:bs])
+    assert all(c.errored for c in out[bs:])
+    assert judge_ok is False  # at least one claim errored
+
+
+def test_run_minority_batch_failure_reports_partial_precision(vault, monkeypatch):
+    # Errored claims are excluded from the precision denominator: a single failed
+    # batch (minority) yields a real partial number, not N/A and not a false 100%.
+    bs = faithfulness.FAITHFULNESS_BATCH_SIZE
+    n_extra = 4  # total bs+1+4 facts → errored ratio stays < 0.5
+    body = "## ROOT\n\n```\n[?] root\n```\n" + "".join(
+        f"## S{i}\n\n```\n[★] fact {i}\n```\n" for i in range(bs + n_extra)
+    )
+    claims = faithfulness.extract_claims(body)
+    assert len(claims) > bs  # forces ≥2 batches, all facts (no edges → no soundness call)
+    # batch1 (bs claims) all supported; batch2 (remainder) fails.
+    monkeypatch.setattr(subprocess, "run",
+                        _mock_llm_sequence(_verdicts_env(bs, "supported", 0.05),
+                                           {"result": "not json", "is_error": False, "usage": {}, "total_cost_usd": 0.01}))
+    rep = faithfulness.run(vault, "s", body, "src", judge_model="sonnet")
+    assert rep["judge_failed"] is False          # minority errored → still usable
+    assert rep["errored"] == len(claims) - bs
+    assert rep["fact_faithfulness_pct"] == 100.0  # over evaluated facts only
+    assert rep["fact_faithfulness_pct"] is not None
 
 
 # ---------- run() aggregation + report ----------
