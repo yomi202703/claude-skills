@@ -1,0 +1,34 @@
+# 改行正規化: 全テキストを LF に固定。
+# Windows の core.autocrlf=true 下でも checkout 時に CRLF へ変換させない。
+# 共有セットは現状すべて LF であり、shell スクリプト(setup.sh)は CRLF 化すると
+# git-bash / WSL で壊れるため明示的に LF を保証する。
+* text=auto eol=lf
+
+# shell スクリプトは LF 必須(明示)。
+*.sh text eol=lf
+
+# バイナリは変換禁止。
+*.xlsx binary
+*.db binary
+*.png binary
+*.gz binary
+
+# ---- Windows 配布バンドル(`git archive`)からの除外 ----
+# Mac リポジトリからは消さず、`git archive` で生成する Windows 向け配布物からのみ
+# 外す。クローン経路では効かないため、配布は git archive を使う(WINDOWS.md 参照)。
+
+# 開発専用ドキュメント(全 skill 共通・配布物ではない)。
+**/_dev/** export-ignore
+
+# Windows で根本的に動かない skill(Mac 専用 API / 別マシン固定パスに束縛)。
+atlas/** export-ignore
+claude-desktop/** export-ignore
+antigravity/** export-ignore
+recall/** export-ignore
+
+# 作者専用の一回限り変換ツール(固定された作者ホームパスを参照)。
+html-deck/scripts/anonymize_sample.py export-ignore
+
+# 既に working tree から削除済みの skill(Mac ブラウザ CDP)。削除コミット後は no-op。
+glm-web/** export-ignore
+qwen-web/** export-ignore

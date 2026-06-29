@@ -14,10 +14,37 @@ on the user's signed-in Google account.
 Exit codes: 0 ok | 1 not reachable | 3 not signed in (login once, see SKILL.md).
 """
 import sys, os, time, json, subprocess
-sys.path.insert(0, __file__.rsplit("/", 1)[0])
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cdp import PORT, gemini_target, any_page, port_alive, WS  # noqa: E402
 
-CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+
+def _find_chrome():
+    """Resolve the Google Chrome executable for the current OS (Mac/Windows/Linux).
+    The Mac path is the original default; Windows/Linux locations are added so the
+    skill is portable. Returns the first that exists, else the first candidate."""
+    import shutil
+    if sys.platform == "darwin":
+        cands = ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
+    elif sys.platform == "win32":
+        cands = [
+            os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe"),
+        ]
+    else:
+        cands = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]
+    for c in cands:
+        if (os.sep in c) or (os.altsep and os.altsep in c):
+            if os.path.exists(c):
+                return c
+        else:
+            found = shutil.which(c)
+            if found:
+                return found
+    return cands[0]
+
+
+CHROME = _find_chrome()
 PROFILE = os.path.expanduser("~/.gemini-chrome")
 APP_URL = "https://gemini.google.com/app"
 
