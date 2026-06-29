@@ -66,7 +66,7 @@ class FaithfulnessReport:
     supported: int
     unsupported: int
     source_silent: int
-    faithfulness_pct: float        # supported / total (blended — see fact_* below)
+    faithfulness_pct: float | None  # supported / total (blended); None ⇒ judge failed
     edge_unsupported: int          # unsupported claims that are edges
     edge_source_silent: int        # synthesized (model-inferred) edges
     # Fact-only precision is the real hallucination signal. A problem-driven
@@ -75,7 +75,10 @@ class FaithfulnessReport:
     # so they must NOT be blended into the headline faithfulness number.
     fact_total: int = 0
     fact_supported: int = 0
-    fact_faithfulness_pct: float = 0.0   # supported facts / fact_total
+    fact_faithfulness_pct: float | None = 0.0   # None ⇒ judge failed (unmeasured, not 100%)
+    # True when the claim judge call failed: precision numbers are N/A, not a pass.
+    # (The soundness pass is a separate call and may still have succeeded.)
+    judge_failed: bool = False
     # Structural soundness: a *second* judgment over the source_silent edges
     # (the synthesized spine). faithfulness asks "is it stated" (no, by design);
     # soundness asks "is the A→B move valid given the source". This is the only
@@ -100,6 +103,7 @@ class FaithfulnessReport:
             "unsupported": self.unsupported,
             "source_silent": self.source_silent,
             "faithfulness_pct": self.faithfulness_pct,
+            "judge_failed": self.judge_failed,
             "fact_total": self.fact_total,
             "fact_supported": self.fact_supported,
             "fact_faithfulness_pct": self.fact_faithfulness_pct,
@@ -194,11 +198,14 @@ def judge_claims(
     source_text: str,
     *,
     judge_model: str = DEFAULT_JUDGE_MODEL,
-) -> tuple[list[ClaimVerdict], float]:
+) -> tuple[list[ClaimVerdict], float, bool]:
     """Send neutralized claims + source to the judge model. Fills each claim's
-    verdict/evidence in place (input order preserved). Returns (claims, cost)."""
+    verdict/evidence in place (input order preserved). Returns (claims, cost,
+    judge_ok) — judge_ok is False when the judge call failed, so the caller can
+    report precision as N/A instead of a misleading 100% (no contradictions found
+    only because nothing was checked)."""
     if not claims:
-        return claims, 0.0
+        return claims, 0.0, True
     claims_json = json.dumps(
         [{"i": i, "claim": c.claim} for i, c in enumerate(claims)],
         ensure_ascii=False, indent=2,
@@ -213,10 +220,11 @@ def judge_claims(
     parsed = result.parsed if not result.is_error else None
     if not isinstance(parsed, list):
         # Judge failed → mark all unverified-as-source_silent (do not claim support)
+        # and signal judge_ok=False so the caller reports precision as N/A.
         for c in claims:
             c.verdict = "source_silent"
             c.evidence = "judge failed"
-        return claims, cost
+        return claims, cost, False
     for i, c in enumerate(claims):
         item = parsed[i] if i < len(parsed) and isinstance(parsed[i], dict) else {}
         v = str(item.get("verdict", "source_silent"))
@@ -224,7 +232,7 @@ def judge_claims(
             v = "source_silent"
         c.verdict = v
         c.evidence = str(item.get("evidence", "")).strip()
-    return claims, cost
+    return claims, cost, True
 
 
 def judge_soundness(
@@ -287,8 +295,12 @@ def write_report(vault: Vault, slug: str, report: FaithfulnessReport) -> Path:
         f"_Last checked: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC_ "
         f"(judge: {report.judge_model})",
         "",
-        f"**事実精度 (hallucination 指標): {report.fact_faithfulness_pct:.1f}%** "
-        f"— 事実 node {report.fact_total} 件中 矛盾/捏造 {report.edge_unsupported + (report.unsupported - report.edge_unsupported)} 件",
+        (
+            "**事実精度: 判定不能 (judge API 失敗) — 数値は N/A。tree 品質の指標ではない。**"
+            if report.judge_failed else
+            f"**事実精度 (hallucination 指標): {report.fact_faithfulness_pct:.1f}%** "
+            f"— 事実 node {report.fact_total} 件中 矛盾/捏造 {report.edge_unsupported + (report.unsupported - report.edge_unsupported)} 件"
+        ),
         "",
         f"合成エッジ (解釈的 spine, 要照合): {report.edge_source_silent} 本",
         "",
@@ -362,13 +374,12 @@ def run(
     """Full faithfulness workflow for one narrative body. Diagnostic only —
     never mutates the narrative. Returns the report dict."""
     claims = extract_claims(narrative_body)
-    claims, cost = judge_claims(vault, slug, claims, source_text, judge_model=judge_model)
+    claims, cost, judge_ok = judge_claims(vault, slug, claims, source_text, judge_model=judge_model)
 
     supported = sum(1 for c in claims if c.verdict == "supported")
     unsupported = sum(1 for c in claims if c.verdict == "unsupported")
     source_silent = sum(1 for c in claims if c.verdict == "source_silent")
     total = len(claims)
-    pct = round(supported / total * 100.0, 1) if total else 0.0
 
     facts = [c for c in claims if c.kind == "fact"]
     fact_total = len(facts)
@@ -377,7 +388,16 @@ def run(
     # unsupported (contradicted/fabricated). source_silent facts are uncited
     # but not necessarily wrong; the hard signal is `unsupported`.
     fact_unsupported = sum(1 for c in facts if c.verdict == "unsupported")
-    fact_pct = round((fact_total - fact_unsupported) / fact_total * 100.0, 1) if fact_total else 0.0
+
+    # When the judge call failed every claim defaults to source_silent, which
+    # would otherwise read as a perfect 100% precision (no contradictions found —
+    # because none were looked for). Report N/A (None) instead of a false pass.
+    if not judge_ok:
+        pct = None
+        fact_pct = None
+    else:
+        pct = round(supported / total * 100.0, 1) if total else 0.0
+        fact_pct = round((fact_total - fact_unsupported) / fact_total * 100.0, 1) if fact_total else 0.0
 
     # Soundness pass over the synthesized spine (the source_silent edges).
     silent_edge_claims = [c for c in claims
@@ -400,6 +420,7 @@ def run(
         fact_total=fact_total,
         fact_supported=fact_supported,
         fact_faithfulness_pct=fact_pct,
+        judge_failed=not judge_ok,
         soundness_total=len(soundness_items),
         soundness_sound=sum(1 for x in soundness_items if x["verdict"] == "sound"),
         soundness_dubious=sum(1 for x in soundness_items if x["verdict"] == "dubious"),
@@ -420,7 +441,8 @@ def run(
             "supported": supported,
             "unsupported": unsupported,
             "source_silent": source_silent,
-            "faithfulness_pct": f"{pct:.1f}",
+            "faithfulness_pct": ("n/a" if pct is None else f"{pct:.1f}"),
+            "judge_failed": "yes" if not judge_ok else "no",
             "soundness_total": report.soundness_total,
             "soundness_unsound": report.soundness_unsound,
             "soundness_dubious": report.soundness_dubious,

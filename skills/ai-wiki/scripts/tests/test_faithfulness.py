@@ -101,18 +101,20 @@ def test_judge_claims_maps_verdicts_in_order(vault, monkeypatch):
     env = {"result": json.dumps(verdicts), "is_error": False, "usage": {}, "total_cost_usd": 0.05}
     monkeypatch.setattr(subprocess, "run", _mock_llm_sequence(env))
 
-    out, cost = faithfulness.judge_claims(vault, "s", claims, "source text", judge_model="sonnet")
+    out, cost, judge_ok = faithfulness.judge_claims(vault, "s", claims, "source text", judge_model="sonnet")
     assert [c.verdict for c in out] == ["supported", "unsupported", "source_silent"]
     assert cost == 0.05
+    assert judge_ok is True
 
 
 def test_judge_claims_failure_defaults_to_source_silent(vault, monkeypatch):
     claims = faithfulness.extract_claims(TREE_BODY)
     env = {"result": "not json", "is_error": False, "usage": {}, "total_cost_usd": 0.01}
     monkeypatch.setattr(subprocess, "run", _mock_llm_sequence(env))
-    out, _ = faithfulness.judge_claims(vault, "s", claims, "src")
-    # On judge failure, nothing is claimed 'supported'
+    out, _, judge_ok = faithfulness.judge_claims(vault, "s", claims, "src")
+    # On judge failure, nothing is claimed 'supported' and judge_ok flags the outage
     assert all(c.verdict == "source_silent" for c in out)
+    assert judge_ok is False
 
 
 # ---------- run() aggregation + report ----------
@@ -148,6 +150,29 @@ def test_run_aggregates_and_writes_report(vault, monkeypatch):
     text = path.read_text("utf-8")
     assert "source_silent" in text
     assert "spine 健全性" in text and "unsound" in text
+
+
+def test_run_judge_failure_reports_na_not_false_pass(vault, monkeypatch):
+    # When the claim judge call fails, every claim defaults to source_silent,
+    # which would naively read as 100% fact precision (no contradictions — because
+    # none were checked). run() must instead report judge_failed + None pcts.
+    bad = {"result": "not json", "is_error": False, "usage": {}, "total_cost_usd": 0.01}
+    # soundness call (2nd) succeeds, proving the two are independent.
+    soundness = {
+        "result": json.dumps([{"i": 0, "verdict": "sound", "reason": "ok"}]),
+        "is_error": False, "usage": {}, "total_cost_usd": 0.02,
+    }
+    monkeypatch.setattr(subprocess, "run", _mock_llm_sequence(bad, soundness))
+
+    rep = faithfulness.run(vault, "slugY", TREE_BODY, "src text", judge_model="sonnet")
+    assert rep["judge_failed"] is True
+    assert rep["faithfulness_pct"] is None
+    assert rep["fact_faithfulness_pct"] is None        # NOT 100.0
+    # soundness was a separate call and still produced a real verdict
+    assert rep["soundness_total"] == 1
+    assert rep["soundness_sound"] == 1
+    text = (vault.root / rep["report_path"]).read_text("utf-8")
+    assert "判定不能" in text and "N/A" in text
 
 
 # ---------- annotate_inferred ----------

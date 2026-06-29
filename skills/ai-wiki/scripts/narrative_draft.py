@@ -506,10 +506,16 @@ def _generate_single(
         body = iter_result.final_body
         cost += iter_result.cost_usd
         coverage_dict = iter_result.to_dict()
-        if not iter_result.converged:
+        if iter_result.final_coverage.unavailable:
+            warnings.append(
+                "coverage UNMEASURED — judge API failed "
+                f"({iter_result.final_coverage.errored}/{iter_result.final_coverage.total} QA errored); "
+                "coverage_pct is N/A, not a tree-quality signal. Re-run when the judge model is healthy."
+            )
+        elif not iter_result.converged:
             warnings.append(
                 f"coverage did not converge after {iter_result.iterations_run} iterations "
-                f"(final {iter_result.final_coverage.coverage_pct:.1f}%, target {coverage_threshold * 100:.0f}%)"
+                f"(final {coverage_qa._fmt_pct(iter_result.final_coverage.coverage_pct)}%, target {coverage_threshold * 100:.0f}%)"
             )
 
     # --- CoVe final consistency cleanup ---
@@ -652,10 +658,15 @@ def _generate_hierarchical(
             body = iter_result.final_body
             total_cost += iter_result.cost_usd
             coverage_reports.append({"slug": sub_slug, **iter_result.to_dict()})
-            if not iter_result.converged:
+            if iter_result.final_coverage.unavailable:
+                warnings.append(
+                    f"{sub_slug}: coverage UNMEASURED — judge API failed "
+                    f"({iter_result.final_coverage.errored}/{iter_result.final_coverage.total} QA errored); N/A, not a quality signal"
+                )
+            elif not iter_result.converged:
                 warnings.append(
                     f"{sub_slug}: coverage did not converge after {iter_result.iterations_run} iterations "
-                    f"(final {iter_result.final_coverage.coverage_pct:.1f}%)"
+                    f"(final {coverage_qa._fmt_pct(iter_result.final_coverage.coverage_pct)}%)"
                 )
 
         if use_cove:
@@ -1209,10 +1220,18 @@ def narrative_draft(
             )
             report.total_cost_usd += fr.get("cost_usd", 0.0)
             faithfulness_reports.append(fr)
-            if fr.get("unsupported", 0):
-                # Real hallucination signal — loud.
+            if fr.get("judge_failed"):
+                # Claim judge call failed — precision is unmeasured, NOT a pass.
+                # (soundness is a separate call and may still have run.)
                 report.warnings.append(
-                    f"{written_slug}: fact precision {fr.get('fact_faithfulness_pct', 0):.0f}% — "
+                    f"{written_slug}: fact precision UNMEASURED — faithfulness judge API failed; "
+                    f"N/A, not a tree-quality signal (see {fr.get('report_path', '')})"
+                )
+            elif fr.get("unsupported", 0):
+                # Real hallucination signal — loud.
+                _fp = fr.get('fact_faithfulness_pct')
+                report.warnings.append(
+                    f"{written_slug}: fact precision {('n/a' if _fp is None else f'{_fp:.0f}%')} — "
                     f"{fr.get('unsupported', 0)} unsupported claim(s), verify "
                     f"(see {fr.get('report_path', '')})"
                 )

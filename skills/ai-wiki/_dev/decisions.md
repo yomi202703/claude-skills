@@ -35,3 +35,65 @@ Correcting the call above (append-only, so the earlier note stands as written): 
 Generalization worth keeping: branch B ("learn via chat") displaces an artifact only when its content is linear (re-renderable as chat). Visual/gestalt artifacts survive intact, because chat is the wrong modality for them. Demote by modality, not by "is it human-facing".
 
 Status: hard rule #1 reworded, DAG dual-role clarified; no code change (the renderer already works, only its status in the docs moved).
+
+## 2026-06-29 — fold the learner-side "wall" prompt's lid detectors into the discovery drill
+
+Context: user brought their own first-person learning contract ("壁としてぶつかる" / "答えを渡さない" / 抽象語・無敵語を許さない / 手続き語も蓋 / 抽象語と突破を見分ける / 一度に一つの壁 / 螺旋の振り返り) and asked whether it could be integrated with `reference/discovery-drill.md`.
+
+Diagnosis: the two are the same mechanism from opposite seats — the drill is operator(AI)-facing machinery, the user's prompt is the learner-facing contract. ~80% is a 1:1 restatement (sealed answer, name-after-function, refute-by-own-words, pull-not-push/third-way, 分からない歓迎, one-edge-at-a-time, hand-off=螺旋). So the integration direction is FOLD the prompt's detectors into the drill, NOT replace the drill with the prompt (replacing loses the DAG question-generator, card capture, sealed-source faithfulness — the three things the single-mountain prompt lacks).
+
+Real new value the prompt has that the drill lacked: a THIRD answer-state. The drill's invariant #2 assumed only on-target vs divergent. An omnibus/invincible word (複雑/バランス/中立/均衡点/どちらも) or a procedure word (流れで/手順通り) is neither — it commits to nothing yet poses as an answer. There is no committed path to refute, so split-and-refute (#2) is the wrong tool; the right move is halt + force one concrete scene (the learner produces the scene → no leak). Plus the lid-vs-breakthrough discrimination: a bared demand/cry may be the abstraction pierced, not a lid — but default to lid (under-help bias) and only ride it forward when unmistakable.
+
+Calls made:
+- Added invariant #3 "A non-answer is not a commit — halt it, don't refute it" (two lids: omnibus words, procedure words; force a concrete scene; the breakthrough exception with default-to-lid). Renumbered hints pull-not-push #3→#4; updated cross-refs.
+- Added the non-commit branch to drill loop step 2 (halt/force-scene/re-pose, don't refute, rule out breakthrough first).
+- SKILL.md drill summary: "Two invariants" → "Core invariants", appended the third-state clause.
+- Did NOT import the learner-voice framing (叫び/螺旋/未踏の山) — kept the spec operator-facing and dry; that framing belongs in how the user opens a session, not in the spec.
+
+Status: discovery-drill.md invariants + drill-loop, and SKILL.md summary, committed this session. No code change (drill is chat-time judgment, no dispatcher command).
+
+## 2026-06-29 (style) — skill-shape's body lens applies to reference/ files, not just SKILL.md
+
+Asked whether skill-shape applies to `reference/discovery-drill.md`. Verdict: half of it. The router/frontmatter/description/directory axis is N/A — the file is a supporting `reference/` loaded by name from the parent SKILL.md body, not a routable unit with a description string. But the "write the body for the executor" core applies fully: the file is executor-facing runtime text the drill instance reads token-by-token, so the body ship-gate (no emphasis markers, no history, WHY ≤ one clause) governs it.
+
+Ran that lens and swept emphasis from the file: removed all italics (`*material*` `*procedure*` `*that*` `*set*` `*specific*`) and the ordinary-word emphasis caps (ONLY/ARE/NOT → lowercase). Two of the italics were ones introduced in the invariant-#3 edit earlier today; the rest pre-existing. Rule applied: emphasis by any mechanism is skim-salience for a human, and the executor does not skim — state the rule plainly, keep only caps that name things (DAG/ROOT/MU/MC/SRS retained).
+
+Deliberately NOT done (repo-style decisions, not unilateral): the file-wide manual hard-wrapping (~90 col; whole vault uses it) and the WHY weight of the "What it is and why" / "Grounding" sections (grey — for a judgment task the stance-setting plausibly changes how the executor runs the loop). Flagged, left for author.
+
+Status: emphasis swept from discovery-drill.md; verified zero italics / zero ordinary-word caps. No behavior change — pure presentation.
+
+## 2026-06-29 (ripple) — reconcile the standalone mobile prompt with the canonical drill
+
+ripple-check after the invariant-#3 fold found the one parallel implementation of the drill rules: `reference/standalone-prompt.md` (the paste-ready block for plain Claude chat / mobile, no Claude Code tooling). It enumerates the same invariants in its own compressed Japanese voice, so it does not reference the canonical file by symbol — caught by searching the rule content, not the structure. It had drifted on three counts against the uncommitted delta:
+- missing the new third answer-state (non-commit / omnibus-word + procedure-word lid) — the same gap just closed in canonical;
+- step-2 still said "当てたら名前を告げて次へ" (old behavior) vs canonical's name-as-retrieval ("それは何と呼ぶ?", don't reveal unprompted);
+- 【記録】 captured only misconceptions, not the naming-gap trigger.
+
+Call: fully reconcile (not a half-sync — a duplicate that looks updated but isn't is its own hazard), each port compressed to standalone's register. Kept the breakthrough exception in the port rather than dropping it: omitting it would make standalone STRICTER than canonical (every bared cry forced to a concrete scene), i.e. not the same rule — the ripple goal is 同値に揃える, so the exception ports too, with the default-to-lid bias explicit. Renumbered standalone's 不変ルール (hints 3→4, leak-check 4→5; non-commit inserted as 3) and added the rule-3 path + naming-retrieval line to 進め方.
+
+D1 (canonical invariant renumber) has zero external ripple: standalone uses independent numbering and links nothing; canonical-internal #2/#3/#4 refs verified consistent. No silent confidence-fix was applicable on canonical — only the duplicate needed aligning.
+
+Status: standalone-prompt.md reconciled (4 edits). No code, no tests (instruction files).
+
+## 2026-06-29 — judge-call failure must not masquerade as a coverage/faithfulness score
+
+Context: ingesting an arxiv paper (deterministic-control-plane-llm-coding-agents) via narrative-draft, the run committed a good tree (soundness pass: 19/20 sound) but reported `coverage 0.0% (80/80 missing), did not converge after 3 iterations` and `fact_faithfulness_pct 100.0`. Both numbers were artifacts of a transient judge-model (sonnet) API outage, not real measurements. Evidence in log.md: `op=narrative_faithfulness ... error=yes ... in=0 out=0` and every coverage item carrying `note: "coverage check failed"`.
+
+Diagnosis: two separate spots conflated "the judge call failed" with a real verdict, and they failed in opposite, both-misleading directions.
+- coverage (`coverage_qa.py`): on judge error, `check_coverage` returned every QA as `status="missing"`. Downstream `coverage_pct = covered/total` then read 0%. Worse, the remediation loop (`iterate_and_fix`) saw 0% < threshold and spent real money running `_apply_gap_fix` 3× against a tree that was already fine (~$1.18 of the run). A judge outage → false 0% → wasted correction cost.
+- faithfulness (`faithfulness.py`): on judge error, `judge_claims` marked every claim `source_silent`. Fact precision is `(fact_total − fact_unsupported)/fact_total`; with 0 unsupported that computes 100% — a perfect score reported precisely because nothing was checked.
+
+Calls made (fix in the scripts, NOT SKILL.md — SKILL.md described the intended behavior correctly; the bug was in code):
+- New terminal status `error` (unevaluated) distinct from `missing` (evaluated, not covered). `check_coverage` returns `error` on both API failure and output truncation.
+- `_coverage_pct()` excludes `error` items from the denominator; returns `(None, unavailable=True)` when nothing was evaluated OR the error rate exceeds `MAX_ERROR_RATIO=0.5`. With zero errors it equals the legacy `covered/total`. `coverage_pct` is now `float | None` (None ⇒ unmeasured, never a spurious 0%); `CoverageReport` gained `errored` + `unavailable`.
+- `iterate_and_fix` breaks the loop immediately when a round is `unavailable` — no gap-fix spend against an unreliable judge.
+- `judge_claims` now returns `(claims, cost, judge_ok)`; on failure `run()` sets `faithfulness_pct`/`fact_faithfulness_pct = None` and `judge_failed=True` instead of 100%. Soundness is a separate call and still ran (that is why the same run got a real 19/20 while precision was unmeasured).
+- All consumers guarded: gap report + faithfulness report render an explicit "UNMEASURED — judge API failed, N/A, not a tree-quality signal" banner; narrative_draft warnings split the `unavailable` case from genuine non-convergence; every `:.1f` on a now-nullable pct routed through `_fmt_pct`/guards.
+
+Why not SKILL.md: considered adding an operational caveat ("0.0% with note=coverage check failed means judge failure"). Rejected — that documents around a bug in the wrong layer; fixing the code removes the false 0% at the source, so no caveat is needed. SKILL.md unchanged.
+
+Tests: +6 (denominator-excludes-errors, no-error==legacy-ratio, all/majority-errored→unavailable+None, run_coverage end-to-end unavailable, faithfulness judge-failure→N/A-not-100). Full suite 195 passed / 3 skipped.
+
+Deferred (recorded, not done this session): source-slug inheritance — narrative-draft ingested the source as `note-2026-06-29-paper` (from the temp filename) rather than the `--slug`/`--title`. P2; trigger [next time source provenance matters]. Re-running coverage alone still requires a full narrative-draft regeneration (no standalone `coverage-recheck <slug>` entry point); the `error`/`unavailable` plumbing added here is the precondition for such a command if it is ever wanted.
+
+Status: coverage_qa.py / faithfulness.py / narrative_draft.py committed this session with tests. The original arxiv run's committed tree is unaffected (faithfulness/coverage are diagnostic, never mutate the tree); only the QA *reporting* was wrong, and only on judge-outage runs.

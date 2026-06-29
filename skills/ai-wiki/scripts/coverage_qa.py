@@ -32,6 +32,11 @@ GAPS_DIR_NAME = ".narrative-gaps"
 # wrote itself (arxiv 2407.04549, 2506.02592). Mirrors faithfulness.DEFAULT_JUDGE_MODEL.
 DEFAULT_JUDGE_MODEL = "sonnet"
 
+# If more than this fraction of QA judgments errored (judge API failure /
+# truncated output), the coverage number is computed on too small a sample to
+# trust — report it as unavailable rather than emit a misleading low score.
+MAX_ERROR_RATIO = 0.5
+
 
 @dataclass
 class QAItem:
@@ -45,7 +50,7 @@ class QAItem:
 @dataclass
 class CoverageStatus:
     q: str
-    status: str  # "covered" | "partial" | "missing"
+    status: str  # "covered" | "partial" | "missing" | "error"
     note: str = ""
 
 
@@ -56,7 +61,14 @@ class CoverageReport:
     covered: int
     partial: int
     missing: int
-    coverage_pct: float
+    coverage_pct: float | None  # None ⇒ unmeasured (judge API failed); NOT 0% coverage
+    # Judge-call failures (API error / truncated output). These are *unevaluated*
+    # items, not genuine misses — they are excluded from the coverage denominator
+    # so a transient judge outage can never masquerade as 0% coverage.
+    errored: int = 0
+    # True when coverage could not be trusted (all/most QA judgments errored).
+    # Consumers must treat coverage_pct as N/A and must NOT run gap remediation.
+    unavailable: bool = False
     items: list[CoverageStatus] = field(default_factory=list)
     cost_usd: float = 0.0
     qa_set_path: str = ""
@@ -74,6 +86,8 @@ class CoverageReport:
             "covered": self.covered,
             "partial": self.partial,
             "missing": self.missing,
+            "errored": self.errored,
+            "unavailable": self.unavailable,
             "coverage_pct": self.coverage_pct,
             "holdout_coverage_pct": self.holdout_coverage_pct,
             "holdout_total": self.holdout_total,
@@ -160,6 +174,34 @@ def load_qa_set(vault: Vault, slug: str, holdout: bool = False) -> list[QAItem]:
     return [QAItem(q=p["q"], a=p["a"]) for p in data.get("qa_pairs", []) if "q" in p and "a" in p]
 
 
+# ---------- aggregation ----------
+
+
+def _tally(statuses: list[CoverageStatus]) -> tuple[int, int, int, int]:
+    """Return (covered, partial, missing, errored) over a status list."""
+    covered = sum(1 for s in statuses if s.status == "covered")
+    partial = sum(1 for s in statuses if s.status == "partial")
+    missing = sum(1 for s in statuses if s.status == "missing")
+    errored = sum(1 for s in statuses if s.status == "error")
+    return covered, partial, missing, errored
+
+
+def _coverage_pct(covered: int, partial: int, missing: int, errored: int) -> tuple[float | None, bool]:
+    """Compute (coverage_pct, unavailable) excluding judge-errored items from the
+    denominator. Returns (None, True) when nothing could be evaluated or the error
+    rate is too high to trust — never a spurious 0% from a judge outage. When no
+    items errored this is identical to the legacy covered/total ratio."""
+    total = covered + partial + missing + errored
+    evaluated = covered + partial + missing
+    if total == 0 or evaluated == 0 or (errored / total) > MAX_ERROR_RATIO:
+        return None, True
+    return round(covered / evaluated * 100.0, 1), False
+
+
+def _fmt_pct(pct: float | None) -> str:
+    return "n/a" if pct is None else f"{pct:.1f}"
+
+
 # ---------- Coverage check ----------
 
 
@@ -183,14 +225,17 @@ def check_coverage(
     )
     llm.log_call(vault.append_log, "coverage_qa_check", slug, result)
     if result.is_error or not isinstance(result.parsed, list):
-        # Fallback: treat everything as missing
-        return [CoverageStatus(q=x.q, status="missing", note="coverage check failed") for x in qa_items], result.cost_usd
+        # Judge call failed — these items are UNEVALUATED, not missing. Mark them
+        # "error" so they are excluded from the coverage denominator (a judge
+        # outage must never read as 0% coverage).
+        return [CoverageStatus(q=x.q, status="error", note="coverage check failed") for x in qa_items], result.cost_usd
 
     parsed = result.parsed
     statuses: list[CoverageStatus] = []
     for i, qa in enumerate(qa_items):
         if i >= len(parsed):
-            statuses.append(CoverageStatus(q=qa.q, status="missing", note="judge output truncated"))
+            # Judge ran out before reaching this item — unevaluated, not a miss.
+            statuses.append(CoverageStatus(q=qa.q, status="error", note="judge output truncated"))
             continue
         item = parsed[i] if isinstance(parsed[i], dict) else {}
         status = str(item.get("status", "missing"))
@@ -218,10 +263,18 @@ def write_gap_report(
         f"_Last checked: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC_",
         "",
         f"{report.total} QA / "
-        f"{report.covered} covered ({report.coverage_pct:.1f}%) / "
-        f"{report.partial} partial / {report.missing} missing",
+        f"{report.covered} covered ({_fmt_pct(report.coverage_pct)}%) / "
+        f"{report.partial} partial / {report.missing} missing / "
+        f"{report.errored} error",
         "",
     ]
+    if report.unavailable:
+        lines += [
+            "> ⚠ coverage UNMEASURED — judge API failed on too many items "
+            f"({report.errored}/{report.total}). The percentage above is N/A; "
+            "this is not a tree-quality signal. Re-run when the judge model is healthy.",
+            "",
+        ]
     missing = [s for s in report.items if s.status == "missing"]
     partial = [s for s in report.items if s.status == "partial"]
 
@@ -311,11 +364,9 @@ def run_coverage(
     )
 
     # --- Step 3: aggregate + write gap report ---
-    covered = sum(1 for s in statuses if s.status == "covered")
-    partial = sum(1 for s in statuses if s.status == "partial")
-    missing = sum(1 for s in statuses if s.status == "missing")
+    covered, partial, missing, errored = _tally(statuses)
     total = len(statuses)
-    coverage_pct = (covered / total * 100.0) if total else 0.0
+    coverage_pct, unavailable = _coverage_pct(covered, partial, missing, errored)
 
     report = CoverageReport(
         slug=slug,
@@ -323,7 +374,9 @@ def run_coverage(
         covered=covered,
         partial=partial,
         missing=missing,
-        coverage_pct=round(coverage_pct, 1),
+        coverage_pct=coverage_pct,
+        errored=errored,
+        unavailable=unavailable,
         items=statuses,
         cost_usd=qa_cost + check_cost,
         qa_set_path=str(qa_set_path(vault, slug).relative_to(vault.root)),
@@ -338,7 +391,9 @@ def run_coverage(
             "covered": covered,
             "partial": partial,
             "missing": missing,
+            "errored": errored,
             "total": total,
+            "coverage_pct": _fmt_pct(coverage_pct),
             "cost_usd": f"{report.cost_usd:.4f}",
         },
     )
@@ -447,7 +502,7 @@ def iterate_and_fix(
         # QA generation failed; return original body with empty report
         empty_report = CoverageReport(
             slug=slug, total=0, covered=0, partial=0, missing=0,
-            coverage_pct=0.0, cost_usd=total_cost,
+            coverage_pct=None, unavailable=True, cost_usd=total_cost,
         )
         return IterateResult(
             final_body=body,
@@ -458,17 +513,22 @@ def iterate_and_fix(
         )
 
     statuses: list[CoverageStatus] = []
-    coverage_pct = 0.0
+    coverage_pct: float | None = None
+    unavailable = False
 
     for i in range(max_iterations):
         iterations_run = i + 1
         statuses, check_cost = check_coverage(vault, slug, body, qa_items, judge_model=judge_model)
         total_cost += check_cost
-        covered = sum(1 for s in statuses if s.status == "covered")
-        total = len(statuses)
-        coverage_pct = (covered / total) if total else 0.0
+        covered, partial, missing, errored = _tally(statuses)
+        coverage_pct, unavailable = _coverage_pct(covered, partial, missing, errored)
 
-        if coverage_pct >= coverage_threshold:
+        if unavailable:
+            # Judge unreliable this round — do NOT spend on gap remediation
+            # against noise; abort the loop and report coverage as unmeasured.
+            break
+
+        if coverage_pct is not None and coverage_pct / 100.0 >= coverage_threshold:
             converged = True
             break
 
@@ -479,10 +539,9 @@ def iterate_and_fix(
         total_cost += fix_cost
 
     # Final aggregation
-    covered = sum(1 for s in statuses if s.status == "covered")
-    partial = sum(1 for s in statuses if s.status == "partial")
-    missing = sum(1 for s in statuses if s.status == "missing")
+    covered, partial, missing, errored = _tally(statuses)
     total = len(statuses)
+    coverage_pct, unavailable = _coverage_pct(covered, partial, missing, errored)
 
     final_report = CoverageReport(
         slug=slug,
@@ -490,7 +549,9 @@ def iterate_and_fix(
         covered=covered,
         partial=partial,
         missing=missing,
-        coverage_pct=round(coverage_pct * 100.0, 1),
+        coverage_pct=coverage_pct,
+        errored=errored,
+        unavailable=unavailable,
         items=statuses,
         cost_usd=total_cost,
         qa_set_path=str(qa_set_path(vault, slug).relative_to(vault.root)),
@@ -513,13 +574,11 @@ def iterate_and_fix(
                 vault, slug, body, ho_items, judge_model=judge_model
             )
             total_cost += ho_check_cost
-            ho_covered = sum(1 for s in ho_statuses if s.status == "covered")
-            ho_total = len(ho_statuses)
-            final_report.holdout_total = ho_total
+            ho_covered, ho_partial, ho_missing, ho_errored = _tally(ho_statuses)
+            ho_pct = _coverage_pct(ho_covered, ho_partial, ho_missing, ho_errored)[0]
+            final_report.holdout_total = len(ho_statuses)
             final_report.holdout_covered = ho_covered
-            final_report.holdout_coverage_pct = (
-                round(ho_covered / ho_total * 100.0, 1) if ho_total else 0.0
-            )
+            final_report.holdout_coverage_pct = ho_pct  # None ⇒ judge failed, not 0%
 
     # Keep the report's cost in lockstep with the returned IterateResult.cost_usd
     # across every path (holdout off / on / gen-failed), so the two never diverge.
@@ -535,11 +594,9 @@ def iterate_and_fix(
             "slug": slug,
             "iterations": iterations_run,
             "converged": "yes" if converged else "no",
-            "coverage_pct": f"{final_report.coverage_pct:.1f}",
-            "holdout_pct": (
-                f"{final_report.holdout_coverage_pct:.1f}"
-                if final_report.holdout_coverage_pct is not None else "n/a"
-            ),
+            "unavailable": "yes" if final_report.unavailable else "no",
+            "coverage_pct": _fmt_pct(final_report.coverage_pct),
+            "holdout_pct": _fmt_pct(final_report.holdout_coverage_pct),
             "cost_usd": f"{total_cost:.4f}",
         },
     )

@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pytest  # noqa: E402
 from coverage_qa import (  # noqa: E402
     DEFAULT_JUDGE_MODEL,
+    MAX_ERROR_RATIO,
     CoverageStatus,
     QAItem,
     check_coverage,
@@ -23,6 +24,8 @@ from coverage_qa import (  # noqa: E402
     save_qa_set,
     write_gap_report,
     CoverageReport,
+    _coverage_pct,
+    _tally,
 )
 from vault import Page, Vault  # noqa: E402
 
@@ -168,7 +171,9 @@ def test_check_coverage_invalid_status_defaults_missing(vault: Vault, monkeypatc
     assert statuses[0].status == "missing"
 
 
-def test_check_coverage_llm_failure_all_missing(vault: Vault, monkeypatch):
+def test_check_coverage_llm_failure_marks_error_not_missing(vault: Vault, monkeypatch):
+    # A judge outage must NOT read as a content miss — items are "error" (unevaluated)
+    # so they fall out of the coverage denominator rather than scoring 0%.
     qa = [QAItem(q="Q1", a="A1"), QAItem(q="Q2", a="A2")]
 
     def err(*a, **k):
@@ -179,7 +184,68 @@ def test_check_coverage_llm_failure_all_missing(vault: Vault, monkeypatch):
         return Fake()
     monkeypatch.setattr(subprocess, "run", err)
     statuses, _ = check_coverage(vault, "s", "body", qa)
-    assert all(s.status == "missing" for s in statuses)
+    assert all(s.status == "error" for s in statuses)
+    assert all(s.note == "coverage check failed" for s in statuses)
+
+
+# ---------- aggregation: judge errors excluded from denominator ----------
+
+
+def test_coverage_pct_excludes_errors_from_denominator():
+    # 1 covered, 1 missing, 2 error → pct over the 2 evaluated = 50%, not 25%.
+    statuses = [
+        CoverageStatus(q="a", status="covered"),
+        CoverageStatus(q="b", status="missing"),
+        CoverageStatus(q="c", status="error"),
+        CoverageStatus(q="d", status="error"),
+    ]
+    covered, partial, missing, errored = _tally(statuses)
+    assert (covered, partial, missing, errored) == (1, 0, 1, 2)
+    pct, unavailable = _coverage_pct(covered, partial, missing, errored)
+    # error ratio = 2/4 = 0.5, not > MAX_ERROR_RATIO (0.5) → still measurable
+    assert unavailable is False
+    assert pct == 50.0
+
+
+def test_coverage_pct_no_errors_matches_legacy_ratio():
+    # With zero errors the denominator is the full set (legacy behavior).
+    pct, unavailable = _coverage_pct(covered=3, partial=0, missing=1, errored=0)
+    assert unavailable is False
+    assert pct == 75.0
+
+
+def test_coverage_pct_all_errored_is_unavailable_not_zero():
+    pct, unavailable = _coverage_pct(covered=0, partial=0, missing=0, errored=5)
+    assert unavailable is True
+    assert pct is None  # the bug being fixed: never a spurious 0%
+
+
+def test_coverage_pct_majority_errored_is_unavailable():
+    # 1 covered, 3 error → error ratio 0.75 > MAX_ERROR_RATIO → untrustworthy.
+    assert MAX_ERROR_RATIO == 0.5
+    pct, unavailable = _coverage_pct(covered=1, partial=0, missing=0, errored=3)
+    assert unavailable is True
+    assert pct is None
+
+
+def test_run_coverage_judge_outage_reports_unavailable(vault: Vault, monkeypatch):
+    # End-to-end: a judge outage yields unavailable=True / coverage_pct=None,
+    # NOT 0% coverage with every item marked missing.
+    _seed_narrative(vault, "s", "body text")
+    save_qa_set(vault, "s", [QAItem(q="Q1", a="A1"), QAItem(q="Q2", a="A2")])
+
+    def err(*a, **k):
+        class Fake:
+            returncode = 1
+            stdout = ""
+            stderr = "boom"
+        return Fake()
+    monkeypatch.setattr(subprocess, "run", err)
+    out = run_coverage(vault, "s", None)
+    assert out["unavailable"] is True
+    assert out["coverage_pct"] is None
+    assert out["errored"] == 2
+    assert out["missing"] == 0
 
 
 # ---------- write_gap_report ----------
