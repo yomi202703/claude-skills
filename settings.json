@@ -26,7 +26,34 @@
     "pdf": "off",
     "skill-creator": "off",
     "setup-cowork": "off",
-    "consolidate-memory": "off"
+    "consolidate-memory": "off",
+    "ripple-check": "name-only",
+    "progress": "name-only",
+    "jibun-de": "name-only",
+    "skill-shape": "name-only",
+    "claude-md": "name-only",
+    "consultant": "name-only",
+    "repo-shape": "name-only",
+    "gemma-prompt": "name-only",
+    "html-deck": "name-only",
+    "windows-share": "name-only",
+    "cn-search": "name-only",
+    "task-handoff": "name-only",
+    "recall": "name-only",
+    "zeitgeist": "name-only",
+    "onsen": "name-only",
+    "prism": "name-only",
+    "session-dag": "name-only",
+    "work-report": "name-only",
+    "review-server": "name-only",
+    "factcheck": "name-only",
+    "gemini-web": "name-only",
+    "chatgpt-web": "name-only",
+    "atlas": "name-only",
+    "glm-web": "name-only",
+    "qwen-web": "name-only",
+    "antigravity": "name-only",
+    "claude-desktop": "name-only"
   },
   "hooks": {
     "PostToolUse": [
@@ -46,6 +73,7 @@
     ],
     "Notification": [
       {
+        "matcher": "permission_prompt",
         "hooks": [
           {
             "type": "command",
@@ -84,7 +112,7 @@
     "anthropic-skills": false
   },
   "spinnerTipsEnabled": false,
-  "effortLevel": "medium",
+  "effortLevel": "high",
   "awaySummaryEnabled": false,
   "autoMemoryEnabled": false,
   "showThinkingSummaries": false,
