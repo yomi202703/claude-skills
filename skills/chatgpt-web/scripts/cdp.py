@@ -3,8 +3,7 @@
 
 Shares ONE dedicated Chrome instance with the gemini-web skill (same debug port
 and --user-data-dir), so the two AI surfaces live as two tabs in a single
-signed-in browser. Unlike the Atlas-based atlas skill (Atlas blocks CDP, forcing
-AppleScript), plain Chrome exposes a real debug port — attach over the WS and
+signed-in browser. Plain Chrome exposes a real debug port — attach over the WS and
 drive the renderer directly.
 """
 import json, os, socket, base64, struct, urllib.request

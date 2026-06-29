@@ -1,13 +1,13 @@
 ---
 name: chatgpt-web
-description: Drive chatgpt.com from Claude over Chrome's DevTools Protocol — send a prompt, capture the reply — reusing a dedicated, signed-in Chrome profile with no API cost. The CDP-based sibling of the atlas skill (which drives the Atlas browser via AppleScript because Atlas blocks CDP); use this when you want plain Chrome instead. Triggers — "ask ChatGPT via Chrome", "/chatgpt-web".
+description: Drive chatgpt.com from Claude over Chrome's DevTools Protocol — send a prompt, capture the reply — reusing a dedicated, signed-in Chrome profile with no API cost. Shares one Chrome instance with the gemini-web skill. Triggers — "ask ChatGPT via Chrome", "/chatgpt-web".
 ---
 
 Drives chatgpt.com in a dedicated Chrome instance shared with the gemini-web skill: one signed-in browser, two AI tabs (ChatGPT + Gemini), same debug port (9333) and profile (`~/.gemini-chrome`). Inference runs on the user's signed-in ChatGPT account.
 
 ## Fallback
 
-If Chrome starts hitting Cloudflare human-checks, fall back to `atlas` (it reuses the real Atlas app session and resists OpenAI's bot-detection better).
+If Chrome starts hitting Cloudflare human-checks, solve the check by hand once in the tab — the dedicated profile persists it — then retry.
 
 ## Use it
 
@@ -52,6 +52,6 @@ The dedicated profile is fresh per surface, so on first use `ask.py` exits 3 (NO
 ## Limits
 
 - Shared dedicated Chrome must be reachable on the debug port; `ask.py` launches it. This is a separate instance from everyday Chrome (a normally-running Chrome cannot have a debug port attached after the fact).
-- OpenAI's automation detection is stricter than Google's; a CDP-driven session may occasionally face Cloudflare challenges. Solve once by hand, or use `atlas`.
+- OpenAI's automation detection is stricter than Google's; a CDP-driven session may occasionally face Cloudflare challenges. Solve once by hand.
 - Completion is a DOM-stability heuristic with stall recovery (see above) — still pass a larger `--timeout` for long jobs, or use file handoff.
 - Selectors (`#prompt-textarea`, `data-testid=send-button`/`stop-button`, `data-message-author-role=assistant`) track ChatGPT's web UI; re-probe with cdp.py and update `ask.py` if they drift.

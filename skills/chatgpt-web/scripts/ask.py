@@ -47,7 +47,7 @@ CHROME = _find_chrome()
 PROFILE = os.path.expanduser("~/.gemini-chrome")  # shared with gemini-web
 APP_URL = "https://chatgpt.com/"
 
-# ChatGPT selectors (same ones the atlas skill tracks).
+# ChatGPT selectors.
 EDITOR = "#prompt-textarea"
 SEND = '[data-testid="send-button"]'
 STOP = '[data-testid="stop-button"]'

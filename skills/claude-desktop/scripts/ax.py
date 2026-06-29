@@ -3,7 +3,7 @@
 
 The Claude desktop app is Electron but ships hardened against automation:
 - CDP is blocked (the app refuses to launch with --remote-debugging-port/-pipe),
-- it has no AppleScript scripting dictionary (so the atlas `execute javascript`
+- it has no AppleScript scripting dictionary (so an `execute javascript`
   trick is unavailable).
 
 The one door left open is the macOS Accessibility API. Chromium does NOT build a
