@@ -13,8 +13,9 @@ Fix an existing repo's mess by safely moving what is there one reversible step a
 - The owner is the審級. Present every proposed tree and every migration as a diff to ratify before it lands. Never self-approve a move.
 
 ## Two entrances
-- Remedial (primary): a repo with accumulated mess. Classify what is there → propose a target tree → owner ratifies → migrate one category at a time → ripple-check pass → test → next category.
-- Preventive: an empty or day-0 repo. Lay the universal layer directly, no migration. Reserve unit-dependent slots empty.
+Both start by exploring — mandatory, never propose or lay a tree from assumptions. Read the existing tree, the current CLAUDE.md, the docs, and build config first; you cannot classify a mess or place base slots you have not seen. The settled tree always ends in a claude-md call: repo-shape moves the tree, then hands the result to claude-md to author the memory layer. Running repo-shape gets you claude-md — the owner does not invoke it separately.
+- Remedial (primary): a repo with accumulated mess. Explore + classify what is there → propose a target tree → owner ratifies → migrate one category at a time → ripple-check pass → test → next category → once all categories land and the tree is settled, invoke claude-md to author CLAUDE.md + governance docs + the orientation map for the post-move tree.
+- Preventive: an empty or day-0 repo. Lay the universal layer directly, no migration. Reserve unit-dependent slots empty → invoke claude-md to author the memory layer into the reserved slots.
 
 ## The universal layer (what repo-shape single-owns)
 Fix only the unit-independent layer — names that do not depend on what the repo eventually judges or produces, so fixing them early causes no rework (G7 applied to directories). Reserve unit-dependent names as empty slots and defer their shape until the unit settles.
@@ -48,7 +49,7 @@ Per category, in order, never skipping:
 The discipline (firewall, early-fix / defer-settle, safe-move steps) is repo-independent and solid; the specific canonical names are n=1 and provisional. Run the minimal cycle on a real repo (classify → propose → ratify → migrate one category → ripple-check pass → test pass) and let the names settle against a real tree before treating any as canonical. Do not present the name set as fixed before that run.
 
 ## Composition
-- claude-md — owns memory-layer content (CLAUDE.md, four-role governance, directory map) and secret discipline. repo-shape owns the tree-shape schema and calls claude-md for that content. Do not duplicate either single source.
+- claude-md — owns memory-layer content (CLAUDE.md, four-role governance, orientation map) and secret discipline. repo-shape owns the tree-shape schema and calls claude-md for that content. Do not duplicate either single source.
 - the ripple-check pass (aftercare/reference/ripple-check.md) — owns reference-following after each move; never reimplement it.
 - judge-loop — composes repo-shape as its Scaffold base (§3.5) and adds only the judgment-specific delta. repo-shape stands alone for any repo, judgment or not.
 - throughline — owns the human-facing view artifacts (`.lavish/` flow/logic, `narrative/` frozen flow). repo-shape reserves their slots and fixes their firewall class; it never authors the views, and throughline defers slot placement back here.

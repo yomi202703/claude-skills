@@ -16,7 +16,7 @@ The core belief: mains communicate by files, not summaries. A subagent returns a
 
 ## Delegates three things (reuse, never redefine)
 - The four-role doc governance (TODO / STATUS / decisions / archive) → global CLAUDE.md. Enact it inside a task dir; do not restate the definitions.
-- The project macro layer (whole-project directory map + memory) → claude-md.
+- The project macro layer (whole-project orientation map + memory) → claude-md.
 - Judgment-loop phase progression and gates → judge-loop. This skill is a sub-skill routed from a branch phase; it does not own phases.
 
 ## Standing principles
