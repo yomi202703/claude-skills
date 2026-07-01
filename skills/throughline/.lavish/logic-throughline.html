@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<!--
+  throughline LOGIC VIEW — 対象=この道具(throughline)自身が今どう動くか。
+  view≠真実(生成物)。地の文は平易語(内部語ゼロ)、駆動プロンプトは逐語で全文、
+  各決まりの背景は畳んだトグル(<details>)で開いた時だけ。描画(CSS)は触らない。
+  ソースの版が変われば作り直して上書き。
+-->
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>throughline — この仕組みは今こう動く</title>
+<style>
+  :root{--ink:#1a1d21;--muted:#6b727b;--line:#d7dce1;--bg:#fbfcfd;--card:#fff;--accent:#2d6cdf;--ok:#2c7a4b;
+    --src:#1f2429;--gen:#2d6cdf;--ship:#6b727b;--human:#2c7a4b;--note:#7a3ea8;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    color:var(--ink);background:var(--bg);line-height:1.5;font-size:15px}
+  header.top{background:#1f2429;color:#fff;padding:18px 28px}
+  header.top h1{margin:0;font-size:18px;font-weight:700}
+  header.top .sub{margin-top:4px;color:#aeb6bf;font-size:12.5px}
+  main{max-width:880px;margin:0 auto;padding:16px 24px 56px}
+  .stamp{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#eef3f8;border:1px solid #d4e0ec;
+    border-radius:8px;padding:8px 12px;font-size:12px;color:#3a3f45;margin-bottom:18px}
+  .stamp .rev{font-family:ui-monospace,monospace;font-weight:700;color:var(--accent)}
+  .lead{font-size:14px;color:#3a3f45;margin:0 0 16px}
+  h2{font-size:13.5px;margin:22px 0 10px;padding-bottom:5px;border-bottom:2px solid var(--ink)}
+
+  .flow{display:flex;flex-direction:column;gap:0;margin:0 0 6px}
+  .stage{border:1px solid var(--line);border-left:4px solid var(--line);border-radius:9px;background:var(--card);padding:9px 13px}
+  .stage .lab{font-size:11px;font-weight:700;color:#fff;border-radius:7px;padding:1px 8px;display:inline-block;margin-bottom:6px}
+  .stage.src{border-left-color:var(--src)} .stage.src .lab{background:var(--src)}
+  .stage.gen{border-left-color:var(--gen)} .stage.gen .lab{background:var(--gen)}
+  .stage.ship{border-left-color:var(--ship)} .stage.ship .lab{background:var(--ship)}
+  .stage.human{border-left-color:var(--human)} .stage.human .lab{background:var(--human)}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{border:1px solid var(--line);border-radius:7px;background:#f7f9fb;padding:4px 9px;font-size:12.5px}
+  .chip b{font-weight:700} .chip .m{color:var(--muted);font-size:11.5px}
+  .down{align-self:center;color:var(--muted);font-size:16px;line-height:1;padding:3px 0}
+  .fb{font-size:12px;color:var(--note);background:#f6f1fb;border:1px solid #e4d7f1;border-radius:8px;padding:7px 11px;margin-top:8px}
+
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  @media(max-width:620px){.cards{grid-template-columns:1fr}}
+  .rc{border:1px solid var(--line);border-radius:9px;background:var(--card);padding:9px 12px;font-size:13px}
+  .rc b{display:block;font-size:13px;margin-bottom:2px} .rc .d{color:var(--muted);font-size:12px}
+  details.why{margin-top:7px;border-top:1px dashed var(--line);padding-top:6px}
+  details.why>summary{cursor:pointer;font-size:11.5px;font-weight:700;color:var(--accent);list-style:none;user-select:none}
+  details.why>summary::-webkit-details-marker{display:none}
+  details.why>summary::before{content:"\25b8 背景"}
+  details.why[open]>summary::before{content:"\25be 背景"}
+  details.why>summary span{display:none}
+  details.why .wb{font-size:12px;color:#3a3f45;margin-top:6px;line-height:1.55}
+  .pr{margin:10px 0 14px}
+  .pr .ph{font-size:11px;font-weight:700;color:#fff;background:var(--note);border-radius:7px;padding:1px 9px;display:inline-block;margin-bottom:6px}
+  .pr .pm{font-size:12px;color:var(--muted);margin:0 0 6px}
+  .pr pre{margin:0;background:#1f2429;color:#e6e9ec;border:1px solid #2c333a;border-radius:9px;
+    padding:12px 14px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.55;
+    white-space:pre-wrap;word-break:break-word;overflow-x:auto}
+  code{font-family:ui-monospace,monospace;font-size:12px;background:#eef1f4;padding:1px 5px;border-radius:4px}
+  footer{max-width:880px;margin:0 auto;padding:12px 24px;color:var(--muted);font-size:12px;border-top:1px solid var(--line)}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>throughline — この仕組みは今こう動く</h1>
+  <div class="sub">状態の羅列でなく「今こう動く」を描く。駆動するプロンプトは下に全文、各決まりの背景はトグルで開いた時だけ。</div>
+</header>
+<main>
+  <div class="stamp">
+    <span>ソースの版 <span class="rev">3699abc314cd</span></span><span>2026-07-01 時点</span>
+    <span style="margin-left:auto;color:#6b727b">今のソースの版がこれと違えば、このページは古い → 作り直す</span>
+  </div>
+
+  <div class="lead">やること = 「今この道具がどう動くか」を、後から人が読み返せる単一ページ１枚に起こし直す。実装の正はコードと指示文の側にあり、これはそこから人間語で起こした説明。</div>
+
+  <h2>データの流れ</h2>
+  <div class="flow">
+    <div class="stage src"><span class="lab">① 源（これが正）</span>
+      <div class="chips">
+        <span class="chip"><b>今のコードと設計</b> <span class="m">説明したい仕組みの現状</span></span>
+        <span class="chip"><b>それを動かしている指示文</b> <span class="m">プロンプト本文そのもの</span></span>
+        <span class="chip"><b>そうした形になった経緯の記録</b> <span class="m">背景トグルの元ネタ</span></span>
+      </div></div>
+    <div class="down">↓ 読んで「今こう動く」だけに削る</div>
+    <div class="stage gen"><span class="lab">② 加工</span>
+      <div class="chips">
+        <span class="chip"><b>平易語に直して１枚に詰める</b> <span class="m">内部用語を外し、前提の無い人に分かる言葉へ</span></span>
+        <span class="chip"><b>指示文だけは言い換えない</b> <span class="m">本文そのまま貼る（言い換えると別物）</span></span>
+        <span class="chip"><b>決めた理由は背景に畳む</b> <span class="m">表は「今こう動く」、なぜは開いた時だけ</span></span>
+      </div></div>
+    <div class="down">↓</div>
+    <div class="stage ship"><span class="lab">③ 出力</span>
+      <div class="chips">
+        <span class="chip"><b>外部依存ゼロの単一ページ１枚</b> <span class="m">開くだけで読める</span></span>
+        <span class="chip"><b>常に同じ定位置に置く</b> <span class="m">定位置が無ければその場所を作って導入</span></span>
+        <span class="chip"><b>先頭に元ネタの版（中身のハッシュ）</b> <span class="m">古さが分かる印</span></span>
+      </div></div>
+    <div class="down">↓</div>
+    <div class="stage human"><span class="lab">④ 受け手</span>
+      <div class="chips"><span class="chip">人がブラウザで読む。版が食い違えば「古い」と分かる</span></div></div>
+    <div class="fb">↺ 元ネタが変わる → 刻んだ版と食い違う → 作り直して上書き。これは真実そのものでなく、真実（コード/決定）を映した窓。</div>
+  </div>
+
+  <h2>設計の原則</h2>
+  <div class="cards">
+    <div class="rc"><b>線は一本に絞った</b><div class="d">仕組みを端から端まで貫く１本だけを描く。辿った経緯が要る時は記録を見る。</div>
+      <details class="why"><summary><span>背景</span></summary>
+        <div class="wb">元は「どう辿り着いたか（流れ）」と「今どう動く」の２枚だった。使ってみた持ち主が「流れの方は全然見ない、今どう動くしか見ない」と言った。流れは経緯の記録と二重持ちでもあった。だから流れを畳み、今は１本だけにした。</div></details>
+    </div>
+    <div class="rc"><b>言葉は二層に分ける</b><div class="d">説明の地の文は前提の無い人に分かる平易語。だが仕組みを動かしている指示文は無改変で全文引用（これだけが例外）。</div>
+      <details class="why"><summary><span>背景</span></summary>
+        <div class="wb">使ってみた持ち主が「ロジックの中にプロンプト全文が絶対欲しい」と言った。だが説明文は平易なまま保ちたい。プロンプトは言い換えると別物になる（正確な文言こそが挙動）ので、地の文は平易・プロンプトは無改変全文、と層を分けて両立させた。逐語にするのはプロンプト本文だけ（ルールや設定は要約のまま）。</div></details>
+    </div>
+    <div class="rc"><b>一枚・自己完結</b><div class="d">外部依存なし・単一ページ。見た目（描画）には触れず、中身だけ差し替えて更新する。</div>
+      <details class="why"><summary><span>背景</span></summary>
+        <div class="wb">前は出力を２ページに分け、それを左右に束ねる土台ページも要る作りだった。だが束ねる面の存在が混乱の元になり、その上片方のページ自体が読まれなかった。１枚に畳んで外部依存も無くしたら、束ねる土台ごと不要になった。</div></details>
+    </div>
+    <div class="rc"><b>窓であって正本でない</b><div class="d">中身の正はコードと決定の記録の側。これは生成した窓で、古くなったら捨てて焼き直す。</div>
+      <details class="why"><summary><span>背景</span></summary>
+        <div class="wb">真実がコードと記録の側にある以上、ページを常に追従させる仕掛けは二重管理になる。だから自動更新は作らず、元ネタの版とズレたら「古い」と出して人が焼き直す、に留めた。</div></details>
+    </div>
+    <div class="rc"><b>出力の家は決め打ち</b><div class="d">焼いた１枚は常に同じ定位置（人が読む常設の面）に置く。無ければその場所を作って導入する — 置き場を毎回選ばない。</div>
+      <details class="why"><summary><span>背景</span></summary>
+        <div class="wb">以前は定位置が無ければ別のフォルダや作業場所の直下に逃がす作りだった。だが散らばって「どこに出たか」が毎回ブレる。持ち主の「定位置を必須にして、無くても導入してほしい」に従い、常に同じ家に置く・無ければ作る、に変えた。</div></details>
+    </div>
+  </div>
+
+  <h2>これを動かしているプロンプト（全文・逐語）</h2>
+  <p class="pm" style="margin:0 0 8px;font-size:12px;color:#6b727b">下は要約でなく、上の「② 加工」を動かしている指示の本文そのまま。一字一句が挙動 — ここだけは平易化せず無改変で載せる。</p>
+  <div class="pr">
+    <span class="ph">② 加工を駆動 — throughline の指示文（全文）</span>
+    <pre>---
+name: throughline
+description: いま動いている仕組みを、一般エンジニアが読んで分かる単一HTML 1枚に起こす/更新する ── 源→加工→出力→受け手のデータの流れと設計原則を平易な人間語で描き、駆動するプロンプトはファイル本文を逐語で全文埋め込む(要約しない)。決定の理由は各決まりに畳んだ背景トグルで添える。経緯を時系列で辿る物語でも決定台帳の焼き直しでもなく、今どう動くかの1枚。今のロジックを分かりやすく1枚に説明・最新化したい時に使う。
+---
+
+# throughline
+
+## 出力(1枚を最新化する)
+
+- 問い = 今どう動くか。源 = 今のコード/設計/プロンプト(台帳ではなくコードを読んで起こす)。形 = データの流れ(源→加工→出力→受け手)+ 設計原則 + 駆動プロンプトの全文。
+- template = templates/logic.html。お手本 = `.lavish/logic-throughline.html`(throughline 自身の埋め済み view)。
+- view≠真実(生成物)・単一HTML・file:// で開ける・描画には触れない。更新 = ソースを見て作り直し上書き。
+
+## 作り方
+
+骨組み templates/logic.html をコピーして埋める。密度・声・トグル/逐語の見え方は満タンのお手本 `.lavish/logic-throughline.html` を見る ── お手本は丸ごとコピーしない(中身が固有で残留する)。
+
+1. 今のコード/設計を読み、「この仕組みは今こう動く」を html-deck の規律で削って1枚にする。状態の羅列でなく、仕組み(データの流れ・構造・原則)を描く。
+2. 仕組みを駆動するプロンプトファイルがあれば、その本文を逐語で全文埋め込む。要約しない(言い換えると別物になる)。複数あれば、どの段を駆動するかを添えて各々全文。プロンプト以外の源(ルール/spec/設定)は平易に要約する ── 逐語にするのはプロンプト本文だけ。
+3. 本文(導入・データの流れの段・原則カード〔背景トグル任意〕・プロンプト全文ブロック)を差し替える。描画(CSS)には触れない。
+4. ある決まりが「過去にこう決めたから今こう」である時、その背景を畳んだトグル(JS 不要の素の `&lt;details&gt;`・既定は閉)で添える。中身は経緯の記録から平易語で起こす。これは今の選択への「なぜ?」であって時系列の物語ではない。背景の無い決まりには付けない。
+5. 鮮度 = ソース(コード/プロンプト)のハッシュをページに刻む。今のハッシュと違えば「古い」と表示して作り直す。時刻でなく中身のハッシュで判定。
+
+## language ルール
+
+- 説明の散文は内部語を出さない。メタ語(spine/DAG/ledger 等)、id、スキーマ語、ツールの固有名、できる限りファイル名を本文に入れない。読む人が知らない言葉はゼロ、一般的なエンジニアが分かる語だけ。
+- 例外はプロンプト全文ブロック。逐語の証拠なので無改変で載せる(内部語・ツール名・スキーマ語が入ってよい)。機構そのものの引用だと分かるよう囲い、説明の散文と逐語ブロックの二層を混ぜない。
+- 実装の正はコード/プロンプトファイルにあり、これは生成した説明だと分かるように書く。
+- 合否: その分野の前提が無い人が散文で今の動き方を掴め、かつ駆動プロンプトを一字一句そのまま読めるか。どちらか欠ければ書き直す。
+
+## 出力先
+
+- 家は常に `.lavish/`。`.lavish/logic-&lt;slug&gt;.html` に上書きし、`.lavish/` が無ければ作る(別所に散らさない)。場所は repo のルート、repo-shape がスロットを定めていればそれに従う。
+- `handoffs/` 下には置かない ── そこは handoff の契約の領分、ここは人が読む派生ビュー。
+- slug は仕組みの名から引いた短い英数。file:// で開けば動く(外部依存なし)。
+- 置き場と firewall 分類は repo-shape が定める。`.lavish/` の view は再生成物だが意図的に commit する。ここはビューの中身だけを作り、スロット配置は repo-shape に委ねる。</pre>
+  </div>
+</main>
+<footer>
+  これは「今こう動く」の説明（状態の羅列でない）。ソースの版 <code>3699abc314cd</code>、違えば作り直す。
+</footer>
+</body>
+</html>

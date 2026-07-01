@@ -28,8 +28,8 @@ At the start of each session, orient from the repo's governance docs — read-on
 
 This is additive and does not redefine the four-role doc governance above.
 
-- Make the human's surface a read-only browser HTML, not terminal scrollback. A repo may keep a `.lavish/` workspace — a standing front of two panes: the flow (how we got here: walls → pivots, who decided) and the logic (how it works now: dataflow/structure). At junctures (a wall→pivot, a chunk closed), `/throughline` regenerates both from their sources.
-- view ≠ truth. Truth stays in decisions/TODO/code; the views are generated windows onto it. Freshness is a content hash of the source (stale-detectable); do not build auto-refresh (regenerate scrappily). Keep wording plain — the flow in spoken voice, the logic at a general engineer's level; no internal jargon.
+- Make the human's surface a read-only browser HTML, not terminal scrollback. A repo may keep a `.lavish/` workspace — a standing logic view: how it works now (source → output dataflow, structure, and the verbatim full text of any prompt that drives the mechanism). At junctures (a chunk closed, the mechanism changed), `/throughline` regenerates it from the code/design. (The earlier second pane — a flow view of how-we-got-here — was dropped; it went unread. That trail lives in decisions.)
+- view ≠ truth. Truth stays in decisions/TODO/code; the view is a generated window onto it. Freshness is a content hash of the source (stale-detectable); do not build auto-refresh (regenerate scrappily). Keep the explanatory prose plain — a general engineer's level, no internal jargon — but embed any driving prompt verbatim, full text, as quoted evidence (that block alone is exempt from the plain-language rule).
 - Cross-project: the views currently running across projects are aggregated at `~/.lavish/home.sh` (localhost:8076 — scans live localhost view-servers; serve a repo's workspace and it shows up).
 - The repo-local 5th "narrative" role (durable, append-only frozen flow) stays repo-local unless explicitly promoted. Origin/design: the agentic-engineering repo's decisions (lavish-*/throughline-*/narrative-*).
 

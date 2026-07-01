@@ -31,7 +31,7 @@ Treat these canonical names as the default the first real run confirms or adjust
 - source layer — the repo's actual logic (`src/`, `scripts/`, or module dirs); name varies. Generated artifacts never co-mingle with it.
 - `tests/`
 - governance dir (`成果物/` or `docs/`) holding `STATUS.md` / `TODO.md` / `decisions/` / `archive/`; structure owned by claude-md.
-- the human-facing view layer — `.lavish/` holds the regenerated flow/logic HTML views; `narrative/` holds the repo-local 5th role (durable, frozen, append-only flow). repo-shape reserves and firewall-classifies the slots; throughline owns the view content, claude-md the governance-doc content. `narrative/` is append-only evidence — versioned, never overwrite, never gitignore. `.lavish/` views are regenerable but committed not gitignored, an intentional exception to the regenerable-is-gitignored default because the view is a durable human surface, not disposable output.
+- the human-facing view layer — `.lavish/` holds the regenerated logic HTML views (how it works now); `narrative/` holds the repo-local 5th role (durable, frozen, append-only flow). repo-shape reserves and firewall-classifies the slots; throughline owns the `.lavish/` view content, claude-md the governance-doc content (narrative included — throughline no longer emits it). `narrative/` is append-only evidence — versioned, never overwrite, never gitignore. `.lavish/` views are regenerable but committed not gitignored, an intentional exception to the regenerable-is-gitignored default because the view is a durable human surface, not disposable output.
 
 Reserve but defer (unit-dependent): `outputs/<unit>/` and any serving/delivery/carve-out dirs — reserve the name, leave the internal shape until the unit settles.
 
@@ -52,4 +52,4 @@ The discipline (firewall, early-fix / defer-settle, safe-move steps) is repo-ind
 - claude-md — owns memory-layer content (CLAUDE.md, four-role governance, orientation map) and secret discipline. repo-shape owns the tree-shape schema and calls claude-md for that content. Do not duplicate either single source.
 - the ripple-check pass (aftercare/reference/ripple-check.md) — owns reference-following after each move; never reimplement it.
 - judge-loop — composes repo-shape as its Scaffold base (§3.5) and adds only the judgment-specific delta. repo-shape stands alone for any repo, judgment or not.
-- throughline — owns the human-facing view artifacts (`.lavish/` flow/logic, `narrative/` frozen flow). repo-shape reserves their slots and fixes their firewall class; it never authors the views, and throughline defers slot placement back here.
+- throughline — owns the human-facing view artifacts (`.lavish/` logic views). repo-shape reserves the slot and fixes its firewall class; it never authors the views, and throughline defers slot placement back here. The `narrative/` slot stays reserved for the repo-local 5th role but is no longer a throughline output.

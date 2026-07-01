@@ -5,12 +5,19 @@
 
   埋めるもの:
   - <title> と h1 / sub        : 何の仕組みか
-  - .stamp の版ハッシュ・時刻   : ソース(コード/決定)の hash。違えば「古い」。
+  - .stamp の版ハッシュ・時刻   : ソース(コード/プロンプト)の hash。違えば「古い」。
   - .lead                      : 一文で「やること/何の仕組みか」
   - データの流れ(.flow)        : ① 源 → ② 加工 → ③ 出力 → ④ 受け手、の段。色は src/gen/ship/human。
   - 原則カード(.cards)          : 設計の決まりごと(一般語で)
-  language ルール: 内部語ゼロ。一般的なエンジニアが読んで分かる言葉だけ。ツール固有名・スキーマ語・
-  ファイル名は避ける。下は形を示す例 ── 実際の仕組みに丸ごと置き換える。
+  - プロンプト全文(.pr)         : 仕組みを駆動するプロンプトファイルの本文を逐語で全文。要約しない。
+                                 複数あれば .pr ブロックを複製し、どの段を駆動するか .ph に書く。
+  - 背景トグル(details.why)     : 任意。ある決まりが「過去にこう決めたから今こう」な時、その背景を畳んで添える。
+                                 JS 不要の素の <details>。既定は閉。今の選択への「なぜ?」で、時系列の物語ではない。
+                                 背景の無い決まりには付けない。中身は説明の散文なので内部語ゼロ側。
+  language ルール: 説明の散文は内部語ゼロ・一般的なエンジニアが読んで分かる言葉だけ(ツール固有名・
+  スキーマ語・ファイル名は避ける)。ただし .pr の中はプロンプト本文の無改変な引用 ── 内部語やツール名が
+  そのまま入ってよい(機構そのものの証拠だから)。散文と逐語ブロックの二層を混ぜない。
+  下は形を示す例 ── 実際の仕組みに丸ごと置き換える。
 -->
 <html lang="ja">
 <head>
@@ -50,6 +57,19 @@
   @media(max-width:620px){.cards{grid-template-columns:1fr}}
   .rc{border:1px solid var(--line);border-radius:9px;background:var(--card);padding:9px 12px;font-size:13px}
   .rc b{display:block;font-size:13px;margin-bottom:2px} .rc .d{color:var(--muted);font-size:12px}
+  details.why{margin-top:7px;border-top:1px dashed var(--line);padding-top:6px}
+  details.why>summary{cursor:pointer;font-size:11.5px;font-weight:700;color:var(--accent);list-style:none;user-select:none}
+  details.why>summary::-webkit-details-marker{display:none}
+  details.why>summary::before{content:"▸ 背景"}
+  details.why[open]>summary::before{content:"▾ 背景"}
+  details.why>summary span{display:none}
+  details.why .wb{font-size:12px;color:#3a3f45;margin-top:6px;line-height:1.55}
+  .pr{margin:10px 0 14px}
+  .pr .ph{font-size:11px;font-weight:700;color:#fff;background:var(--note);border-radius:7px;padding:1px 9px;display:inline-block;margin-bottom:6px}
+  .pr .pm{font-size:12px;color:var(--muted);margin:0 0 6px}
+  .pr pre{margin:0;background:#1f2429;color:#e6e9ec;border:1px solid #2c333a;border-radius:9px;
+    padding:12px 14px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.55;
+    white-space:pre-wrap;word-break:break-word;overflow-x:auto}
   code{font-family:ui-monospace,monospace;font-size:12px;background:#eef1f4;padding:1px 5px;border-radius:4px}
   footer{max-width:880px;margin:0 auto;padding:12px 24px;color:var(--muted);font-size:12px;border-top:1px solid var(--line)}
 </style>
@@ -57,7 +77,7 @@
 <body>
 <header class="top">
   <h1>(仕組みの名) — この仕組みはどう動くか</h1>
-  <div class="sub">状態の羅列でなく「今こう動く」を描く。経緯は別の「流れ」ページへ。</div>
+  <div class="sub">状態の羅列でなく「今こう動く」を描く。仕組みを駆動するプロンプトは下に全文そのまま。</div>
 </header>
 <main>
   <!-- ▼▼▼ ここから下(本文)を実際の仕組みに置き換える ▼▼▼ -->
@@ -86,8 +106,19 @@
 
   <h2>設計の原則</h2>
   <div class="cards">
-    <div class="rc"><b>(原則1)</b><div class="d">(一般語で説明)</div></div>
+    <div class="rc"><b>(原則1)</b><div class="d">(一般語で説明)</div>
+      <details class="why"><summary><span>背景</span></summary>
+        <div class="wb">(この決まりが在る背景=過去にこう決めた理由を平易語で一段落。経緯の記録から起こす。畳んだ状態が既定 ── 表の面は「今こう動く」だけ、背景は開いた時だけ。今の選択への「なぜ?」であって時系列の物語ではない。背景の無い決まりには付けない。)</div></details>
+    </div>
     <div class="rc"><b>(原則2)</b><div class="d">(一般語で説明)</div></div>
+  </div>
+
+  <h2>これを動かしているプロンプト(全文・逐語)</h2>
+  <p class="pm" style="margin:0 0 8px;font-size:12px;color:#6b727b">下は要約でなく、上の「② 加工」を駆動する指示の本文そのまま。一字一句が挙動 ── ここだけは平易化せず無改変で載せる。</p>
+  <div class="pr">
+    <span class="ph">② 加工を駆動 — (プロンプトの呼び名)</span>
+    <pre>(プロンプトファイルの本文を逐語で全文。改変・省略しない。
+複数のプロンプトがあれば、この .pr ブロックを丸ごと複製し、.ph に「どの段を駆動するか」を書く。)</pre>
   </div>
   <!-- ▲▲▲ ここまで差し替え ▲▲▲ -->
 </main>
